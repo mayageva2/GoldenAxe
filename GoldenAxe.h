@@ -13,9 +13,11 @@ namespace GoldenAxe {
         int credits = 1;
     };
 
+    enum class AIType { CHASER, RUNNER };
     struct AI {
         bool active = true;
         float speed = 1.2f;
+        AIType type = AIType::CHASER; // default chaser
     };
 
     struct Hit {
@@ -48,6 +50,15 @@ namespace GoldenAxe {
         return enemy;
     }
 
+    static ent_type CreateSanta(float x, float y) {
+        ent_type santa = World::createEntity();
+        World::addComponent(santa, Position{x, y});
+        World::addComponent(santa, Movement{0, 0});
+        World::addComponent(santa, ChangeLives{1, 0});
+        World::addComponent(santa, AI{true, 2.0f, AIType::RUNNER}); //santa is faster and running from player
+        return santa;
+    }
+
     // Systems Implementations
     class GameplaySystems {
     public:
@@ -63,9 +74,12 @@ namespace GoldenAxe {
                     auto& enemy_mov = World::getComponent<Movement>(e);
                     auto& enemy_ai = World::getComponent<AI>(e);
 
-                    if (enemy_pos.x < player_pos.x) enemy_mov.vx = enemy_ai.speed;
-                    else enemy_mov.vx = -enemy_ai.speed;
+                    if (enemy_pos.x < player_pos.x) {
+                        enemy_mov.vx = (enemy_ai.type == AIType::CHASER) ? enemy_ai.speed : -enemy_ai.speed;
+                    } else {
+                        enemy_mov.vx = (enemy_ai.type == AIType::CHASER) ? -enemy_ai.speed : enemy_ai.speed;
                     }
+                }
             }
         }
     };
