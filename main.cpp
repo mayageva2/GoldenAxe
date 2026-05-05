@@ -37,6 +37,15 @@ int main() {
         CombatSystem::checkAttack(player, enemy);
     }
 
+    std::cout << "\n--- Testing Magic System ---" << std::endl;
+
+    auto& playerFlasks = World::getComponent<FlaskUsage>(player);
+    playerFlasks.current_flasks = 5;
+
+    GameplaySystems::useMagic(player);
+    auto& enemyLives = World::getComponent<ChangeLives>(enemy);
+    
+    std::cout << "Enemy lives after magic: " << enemyLives.lives << std::endl;
     std::cout << "\nTest Finished." << std::endl;
     return 0;
 }

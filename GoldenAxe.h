@@ -82,6 +82,28 @@ namespace GoldenAxe {
                 }
             }
         }
+
+        static void useMagic(ent_type player) {
+            auto& flasks = World::getComponent<FlaskUsage>(player);
+
+            if (flasks.current_flasks >= flasks.goal) {
+                std::cout << "!!! CASTING ULTIMATE MAGIC !!!" << std::endl;
+
+                for (int i = 0; i <= World::maxId(); ++i) {
+                    ent_type e{i};
+                    if (World::mask(e).test(Component<AI>::Bit)) {
+                        auto& lives = World::getComponent<ChangeLives>(e);
+                        lives.lives = 0;
+                        std::cout << "Enemy " << i << " was destroyed by magic!" << std::endl;
+                    }
+                }
+
+                flasks.current_flasks = 0;
+            } else {
+                std::cout << "Not enough flasks for magic! Current: "
+                          << flasks.current_flasks << "/" << flasks.goal << std::endl;
+            }
+        }
     };
 
     class CombatSystem {
