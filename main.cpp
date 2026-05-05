@@ -35,17 +35,27 @@ int main() {
         }
 
         CombatSystem::checkAttack(player, enemy);
+        ScoreSystem::update(player);
+        auto& score = World::getComponent<Score>(player);
+        std::cout << "Current Score: " << score.points << std::endl;
     }
 
-    std::cout << "\n--- Testing Magic System ---" << std::endl;
+    std::cout << "\n--- Testing Magic System & Collection ---" << std::endl;
+
+    std::cout << "Collecting a flask..." << std::endl;
+    GameplaySystems::collectFlask(player);
+    ScoreSystem::update(player);
 
     auto& playerFlasks = World::getComponent<FlaskUsage>(player);
     playerFlasks.current_flasks = 5;
 
+    std::cout << "Using Magic!" << std::endl;
     GameplaySystems::useMagic(player);
-    auto& enemyLives = World::getComponent<ChangeLives>(enemy);
-    
-    std::cout << "Enemy lives after magic: " << enemyLives.lives << std::endl;
-    std::cout << "\nTest Finished." << std::endl;
+    ScoreSystem::update(player);
+
+    auto& finalScore = World::getComponent<Score>(player);
+    std::cout << "\nFinal Score: " << finalScore.points << std::endl;
+    std::cout << "Test Finished." << std::endl;
+
     return 0;
 }

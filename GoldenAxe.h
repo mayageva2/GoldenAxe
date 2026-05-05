@@ -13,6 +13,10 @@ namespace GoldenAxe {
         int credits = 1;
     };
 
+    struct Score {
+        int points = 0;
+    };
+
     enum class AIType { CHASER, RUNNER };
     struct AI {
         bool active = true;
@@ -30,6 +34,10 @@ namespace GoldenAxe {
         int goal = 5;
     };
 
+    // For Score System
+    struct EnemyKilledEvent {};
+    struct FlaskCollectedEvent {};
+
     // Entities Creation
     static ent_type CreateHero(float x, float y) {
         ent_type hero = World::createEntity();
@@ -38,6 +46,7 @@ namespace GoldenAxe {
         World::addComponent(hero, ChangeLives{3, 1});
         World::addComponent(hero, Hit{false, 1});
         World::addComponent(hero, FlaskUsage{0, 5});
+        World::addComponent(hero, Score{0});
         return hero;
     }
 
@@ -93,14 +102,28 @@ namespace GoldenAxe {
                     ent_type e{i};
                     if (World::mask(e).test(Component<AI>::Bit)) {
                         auto& lives = World::getComponent<ChangeLives>(e);
-                        lives.lives = 0;
-                        std::cout << "Enemy " << i << " was destroyed by magic!" << std::endl;
+                        if (lives.lives > 0) {
+                            lives.lives = 0;
+                            World::addComponent(e, EnemyKilledEvent{});
+                        }
                     }
                 }
 
                 flasks.current_flasks = 0;
             } else {
                 std::cout << "Not enough flasks for magic! Current: "
+                          << flasks.current_flasks << "/" << flasks.goal << std::endl;
+            }
+        }
+
+        static void collectFlask(ent_type player) {
+            auto& flasks = World::getComponent<FlaskUsage>(player);
+
+            if (flasks.current_flasks < flasks.goal) {
+                flasks.current_flasks++;
+                World::addComponent(player, FlaskCollectedEvent{});
+
+                std::cout << "Flask Collected! Current Magic: "
                           << flasks.current_flasks << "/" << flasks.goal << std::endl;
             }
         }
@@ -120,7 +143,33 @@ namespace GoldenAxe {
                     victim_stats.lives -= hit.damage;
                     std::cout << "Hit! Victim lives left: " << victim_stats.lives << std::endl;
 
+                    if (victim_stats.lives <= 0 && !World::mask(victim).test(Component<EnemyKilledEvent>::Bit)) {                        World::addComponent(victim, EnemyKilledEvent{});
+                        World::addComponent(victim, EnemyKilledEvent{});
+                    }
+
                     hit.is_attacking = false;
+                }
+            }
+        }
+    };
+
+    class ScoreSystem {
+    public:
+        static void update(ent_type player) {
+            auto& score = World::getComponent<Score>(player);
+
+            for (int i = 0; i <= World::maxId(); ++i) {
+                ent_type e{i};
+                auto mask = World::mask(e);
+
+                if (mask.test(Component<EnemyKilledEvent>::Bit)) {
+                    score.points += 100;
+                    //World::removeComponent<EnemyKilledEvent>(e);
+                }
+
+                if (mask.test(Component<FlaskCollectedEvent>::Bit)) {
+                    score.points += 50;
+                    //World::removeComponent<FlaskCollectedEvent>(e);
                 }
             }
         }
