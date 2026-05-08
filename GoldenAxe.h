@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 #include <box2d/box2d.h>
 
+
 using namespace bagel;
 
 namespace GoldenAxe {
@@ -37,6 +38,19 @@ namespace GoldenAxe {
         int goal = 5;
     };
     using Collider = struct { b2BodyId b; };
+    using Animation = struct {
+        int frame = 0;
+        float timer = 0.f;
+    };
+
+    using State = struct {
+        enum Type {
+            IDLE,
+            WALK,
+            ATTACK,
+            HIT
+        } type = IDLE;
+    };
 
 
     // For Score System
@@ -179,6 +193,55 @@ namespace GoldenAxe {
         }
     };*/
 
+    //Settings for positions (from images)
+    SDL_FRect HERO_IDLE = {
+        210, 20,
+        45, 70
+    };
+
+    SDL_FRect HERO_WALK[] = {
+        { 10, 90, 45, 70 },
+        { 60, 90, 45, 70 },
+        {110, 90, 45, 70 },
+        {160, 90, 45, 70 }
+    };
+
+    SDL_FRect HERO_ATTACK = {
+        180, 170,
+        70, 70
+    };
+
+    SDL_FRect HERO_HIT = {
+        420, 120,
+        60, 60
+    };
+
+    SDL_FRect ENEMY_IDLE = {
+        10, 10,
+        55, 70
+    };
+
+    SDL_FRect ENEMY_WALK[] = {
+        { 10, 10, 55, 70 },
+        { 65, 10, 55, 70 },
+        {120, 10, 55, 70 },
+        {175, 10, 55, 70 }
+    };
+
+    SDL_FRect ENEMY_ATTACK = {
+        180, 90,
+        80, 70
+    };
+
+    SDL_FRect SANTA = {
+        95, 70,
+        120, 140
+    };
+
+    SDL_FRect FLASK = {
+        0, 0,
+        70, 70
+    };
 
     class GoldenAxe {
      private:
@@ -186,13 +249,24 @@ namespace GoldenAxe {
         static constexpr int	WIN_W = 800;
         static constexpr int	WIN_H = 600;
 
+        //Placements for the characters
+        static float constexpr upperStartingPosition = 120;
+        static float constexpr bottomStartingPosition = WIN_H - 120;
+        static float constexpr leftStartingPosition = 150;
+        static float constexpr rightStartingPosition = WIN_W - 150;
+        static float constexpr speed=1;
+
         static constexpr int	FPS = 60;
         static constexpr Uint64	GAME_FRAME = 1000/FPS;
         static constexpr float	RAD_TO_DEG = 57.2958f;
 
 
+
+
         static constexpr float TEX_SCALE = 0.25f;
         static constexpr float BOX_SCALE = 10.f;
+        //static constexpr float FLOOR_Y = 420.f;
+
 
         SDL_Texture*		tex = nullptr;
         SDL_Renderer*		ren = nullptr;
