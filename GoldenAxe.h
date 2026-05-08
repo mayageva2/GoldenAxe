@@ -1,42 +1,47 @@
 #include "bagel.h"
+#include <SDL3/SDL_stdinc.h>
+#include <SDL3/SDL.h>
+#include <box2d/box2d.h>
 
 using namespace bagel;
 
 namespace GoldenAxe {
 
     // Structs Definitions
-    struct Position { float x, y; };
-    struct Movement { float vx, vy; };
-
-    struct ChangeLives {
+    using Position =struct { float x, y; };
+    using Keys = struct { SDL_Scancode up,down,right,left; };
+    using Intent = struct { bool up,down,right,left; };
+    using Movement =struct{ float vx, vy; };
+    using ChangeLives = struct {
         int lives = 3;
         int credits = 1;
     };
-
-    struct Score {
+    using Score = struct {
         int points = 0;
     };
-
+    using Drawable = struct { SDL_FRect part; SDL_FPoint size; };
     enum class AIType { CHASER, RUNNER };
-    struct AI {
+    using AI =struct{
         bool active = true;
         float speed = 1.2f;
         AIType type = AIType::CHASER; // default chaser
     };
-
-    struct Hit {
+    using Hit =struct {
         bool is_attacking = false;
         int damage = 1;
     };
 
-    struct FlaskUsage {
+    //Can be useful to differ between warrior and enemy
+    using FlaskUsage = struct {
         int current_flasks = 0;
         int goal = 5;
     };
+    using Collider = struct { b2BodyId b; };
+
 
     // For Score System
-    struct EnemyKilledEvent {};
-    struct FlaskCollectedEvent {};
+    using EnemyKilledEvent = struct {};
+    using FlaskCollectedEvent = struct {};
 
     // Entities Creation
     static ent_type CreateHero(float x, float y) {
@@ -63,12 +68,11 @@ namespace GoldenAxe {
         ent_type santa = World::createEntity();
         World::addComponent(santa, Position{x, y});
         World::addComponent(santa, Movement{0, 0});
-        World::addComponent(santa, ChangeLives{1, 0});
         World::addComponent(santa, AI{true, 2.0f, AIType::RUNNER}); //santa is faster and running from player
         return santa;
     }
 
-    // Systems Implementations
+   /* // Systems Implementations
     class GameplaySystems {
     public:
         static void UpdateAI(ent_type player_entity) {
@@ -173,5 +177,47 @@ namespace GoldenAxe {
                 }
             }
         }
+    };*/
+
+
+    class GoldenAxe {
+     private:
+
+        static constexpr int	WIN_W = 800;
+        static constexpr int	WIN_H = 600;
+
+        static constexpr int	FPS = 60;
+        static constexpr Uint64	GAME_FRAME = 1000/FPS;
+        static constexpr float	RAD_TO_DEG = 57.2958f;
+
+
+        static constexpr float TEX_SCALE = 0.25f;
+        static constexpr float BOX_SCALE = 10.f;
+
+        SDL_Texture*		tex = nullptr;
+        SDL_Renderer*		ren = nullptr;
+        SDL_Window*			win = nullptr;
+        b2WorldId box = b2_nullWorldId;
+
+        void box_system() const;
+        void input_system() const;
+        void move_system() const;
+        void score_system() const;
+        void draw_system() const;
+        void hit_system() const;
+        void resetStage() const;
+
+        static constexpr Drawable makeDrawable(SDL_FRect part);
+
+     public:
+        GoldenAxe();
+        ~GoldenAxe();
+        bool valid() const {
+            return b2World_IsValid(this->box);
+        }
+        void run();
     };
+
+
+
 }

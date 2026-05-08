@@ -2,10 +2,15 @@
 #include "bagel.h"
 #include "GoldenAxe.h"
 
+
 using namespace bagel;
 using namespace GoldenAxe;
 
 int main() {
+
+    if (!SDL_Init(SDL_INIT_VIDEO))
+
+
     std::cout << "--- Golden Axe Logic Test ---" << std::endl;
 
     auto player = CreateHero(100.0f, 100.0f);
