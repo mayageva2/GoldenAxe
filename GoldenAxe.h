@@ -1,12 +1,21 @@
+#pragma once
+
 #include "bagel.h"
 #include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL.h>
+#include <SDL3_image/SDL_image.h>
 #include <box2d/box2d.h>
+
+#define CHARACTERS_FILE "external/characters.png"
+#define ENEMIES_FILE "external/enemies.png"
+#define FLASK_FILE "external/flask.jpg"
+#define SANTA_FILE "external/santa.png"
+#define STAGE_FILE "external/stage.jpg"
 
 
 using namespace bagel;
 
-namespace GoldenAxe {
+namespace goldenaxe {
 
     // Structs Definitions
     using Position =struct { float x, y; };
@@ -20,7 +29,7 @@ namespace GoldenAxe {
     using Score = struct {
         int points = 0;
     };
-    using Drawable = struct { SDL_FRect part; SDL_FPoint size; };
+    using Drawable = struct { SDL_FRect part; SDL_FPoint size; SDL_Texture *texture; };
     enum class AIType { CHASER, RUNNER };
     using AI =struct{
         bool active = true;
@@ -194,51 +203,51 @@ namespace GoldenAxe {
     };*/
 
     //Settings for positions (from images)
-    SDL_FRect HERO_IDLE = {
-        210, 20,
+    inline constexpr SDL_FRect HERO_IDLE = {
+        185, 20,
         45, 70
     };
 
-    SDL_FRect HERO_WALK[] = {
+    inline constexpr SDL_FRect HERO_WALK[] = {
         { 10, 90, 45, 70 },
         { 60, 90, 45, 70 },
         {110, 90, 45, 70 },
         {160, 90, 45, 70 }
     };
 
-    SDL_FRect HERO_ATTACK = {
+    inline constexpr SDL_FRect HERO_ATTACK = {
         180, 170,
         70, 70
     };
 
-    SDL_FRect HERO_HIT = {
+    inline constexpr SDL_FRect HERO_HIT = {
         420, 120,
         60, 60
     };
 
-    SDL_FRect ENEMY_IDLE = {
+    inline constexpr SDL_FRect ENEMY_IDLE = {
         10, 10,
         55, 70
     };
 
-    SDL_FRect ENEMY_WALK[] = {
+    inline constexpr SDL_FRect ENEMY_WALK[] = {
         { 10, 10, 55, 70 },
         { 65, 10, 55, 70 },
         {120, 10, 55, 70 },
         {175, 10, 55, 70 }
     };
 
-    SDL_FRect ENEMY_ATTACK = {
+    inline constexpr SDL_FRect ENEMY_ATTACK = {
         180, 90,
         80, 70
     };
 
-    SDL_FRect SANTA = {
+    inline constexpr SDL_FRect SANTA = {
         95, 70,
         120, 140
     };
 
-    SDL_FRect FLASK = {
+    inline constexpr SDL_FRect FLASK = {
         0, 0,
         70, 70
     };
@@ -261,17 +270,19 @@ namespace GoldenAxe {
         static constexpr float	RAD_TO_DEG = 57.2958f;
 
 
-
-
-        static constexpr float TEX_SCALE = 0.25f;
+        static constexpr float TEX_SCALE = 1.f;
         static constexpr float BOX_SCALE = 10.f;
         //static constexpr float FLOOR_Y = 420.f;
 
 
-        SDL_Texture*		tex = nullptr;
+        SDL_Texture*		characterstex = nullptr;
+        SDL_Texture*		enemiestex = nullptr;
+        SDL_Texture*		flasktex = nullptr;
+        SDL_Texture*		santatex = nullptr;
+        SDL_Texture*		stagetex = nullptr;
         SDL_Renderer*		ren = nullptr;
         SDL_Window*			win = nullptr;
-        b2WorldId box = b2_nullWorldId;
+        //b2WorldId box = b2_nullWorldId;
 
         void box_system() const;
         void input_system() const;
@@ -281,14 +292,14 @@ namespace GoldenAxe {
         void hit_system() const;
         void resetStage() const;
 
-        static constexpr Drawable makeDrawable(SDL_FRect part);
+        static constexpr Drawable makeDrawable(SDL_FRect part, SDL_Texture* texture);
 
      public:
         GoldenAxe();
-        ~GoldenAxe();
-        bool valid() const {
+        ~GoldenAxe(){};
+        /*bool valid() const {
             return b2World_IsValid(this->box);
-        }
+        }*/
         void run();
     };
 

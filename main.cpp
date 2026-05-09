@@ -4,11 +4,13 @@
 
 
 using namespace bagel;
-using namespace GoldenAxe;
+using namespace goldenaxe;
 
 int main() {
 
-    if (!SDL_Init(SDL_INIT_VIDEO))
+    goldenaxe::GoldenAxe();
+
+   /* if (!SDL_Init(SDL_INIT_VIDEO))
 
 
     std::cout << "--- Golden Axe Logic Test ---" << std::endl;
@@ -61,6 +63,6 @@ int main() {
     auto& finalScore = World::getComponent<Score>(player);
     std::cout << "\nFinal Score: " << finalScore.points << std::endl;
     std::cout << "Test Finished." << std::endl;
-
+*/
     return 0;
 }
