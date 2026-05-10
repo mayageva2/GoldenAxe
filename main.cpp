@@ -8,7 +8,7 @@ using namespace goldenaxe;
 
 int main() {
 
-    goldenaxe::GoldenAxe();
+    goldenaxe::GoldenAxe().run();
 
    /* if (!SDL_Init(SDL_INIT_VIDEO))
 

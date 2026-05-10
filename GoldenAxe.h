@@ -19,8 +19,9 @@ namespace goldenaxe {
 
     // Structs Definitions
     using Position =struct { float x, y; };
-    using Keys = struct { SDL_Scancode up,down,right,left; };
-    using Intent = struct { bool up,down,right,left; };
+    using Keys = struct { SDL_Scancode up,down,right,left,hit; };
+    using Intent = struct { bool up,down,right,left,hit; };
+    using Collider = struct {SDL_FRect part;};
     using Movement =struct{ float vx, vy; };
     using ChangeLives = struct {
         int lives = 3;
@@ -46,7 +47,6 @@ namespace goldenaxe {
         int current_flasks = 0;
         int goal = 5;
     };
-    using Collider = struct { b2BodyId b; };
     using Animation = struct {
         int frame = 0;
         float timer = 0.f;
@@ -252,6 +252,24 @@ namespace goldenaxe {
         70, 70
     };
 
+    static constexpr int	WIN_W = 800;
+    static constexpr int	WIN_H = 600;
+
+    inline bool overlap(SDL_FRect a, SDL_FRect b) {
+        bool widthoverlap=false;
+        bool heightoverlap=false;
+        if ((b.x<=a.x && a.x<=b.x+b.w)||((a.x<=b.x && b.x<=a.x+a.w)))
+         widthoverlap=true;
+        if ((b.y<=a.y && a.y<=b.y+b.h)||((a.y<=b.y && b.y<=a.y+a.h)))
+            heightoverlap=true;
+
+        return widthoverlap && heightoverlap;
+    }
+
+    inline bool outofbounds(SDL_FRect rect) {
+        return rect.x<=0 || rect.x+rect.w >= WIN_W || rect.y<=0 || rect.y+rect.h >= WIN_H;
+    }
+
     class GoldenAxe {
      private:
 
@@ -293,6 +311,7 @@ namespace goldenaxe {
         void resetStage() const;
 
         static constexpr Drawable makeDrawable(SDL_FRect part, SDL_Texture* texture);
+        static constexpr  SDL_FRect colliderRect(const Position& p,const Drawable& d) ;
 
      public:
         GoldenAxe();

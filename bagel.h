@@ -306,6 +306,10 @@ namespace bagel
 				del<Ts...>();
 		}
 
+		bool operator==(const Entity& other) {
+			return other._ent.id == this->_ent.id;
+		}
+
 		template <class T> bool has() const { return mask().test(Component<T>::Bit); }
 		bool test(const Mask& m) const { return mask().test(m); }
 
