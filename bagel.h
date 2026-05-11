@@ -1,8 +1,7 @@
 #pragma once
+//#include <cstdlib>
 #include <cstdint>
-#include <cstdlib>
 #include <type_traits>
-#include <algorithm>
 
 namespace bagel
 {
@@ -304,10 +303,6 @@ namespace bagel
 			del<T>();
 			if constexpr (sizeof...(Ts)>0)
 				del<Ts...>();
-		}
-
-		bool operator==(const Entity& other) {
-			return other._ent.id == this->_ent.id;
 		}
 
 		template <class T> bool has() const { return mask().test(Component<T>::Bit); }
