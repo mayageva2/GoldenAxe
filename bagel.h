@@ -1,5 +1,3 @@
-// Copyright (C) 2026 Moshe Sulamy
-
 #pragma once
 //#include <cstdlib>
 #include <cstdint>

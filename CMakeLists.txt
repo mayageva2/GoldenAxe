@@ -1,23 +1,29 @@
 cmake_minimum_required(VERSION 3.10)
+
 project(GoldenAxe)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXE_LINKER_FLAGS "-static")
 
-include_directories(lib/sdl/include)
-include_directories(lib/sdl_image/include)
+find_package(SDL3 REQUIRED)
+find_package(SDL3_image REQUIRED)
 
-link_directories(lib/sdl/lib)
-link_directories(lib/sdl_image/lib)
+add_subdirectory(box2d/box2d-3.1.1)
 
 add_executable(GoldenAxe
         main.cpp
         bagel.h
         GoldenAxe.h
+        GoldenAxe.cpp
 )
 
-target_link_libraries(GoldenAxe PRIVATE SDL3 SDL3_image)
+target_include_directories(GoldenAxe PRIVATE
+        box2d/box2d-3.1.1/include
+)
 
-file(GLOB SDL_DLLS "${CMAKE_SOURCE_DIR}/lib/sdl/bin/*.dll")
-file(GLOB SDL_IMAGE_DLLS "${CMAKE_SOURCE_DIR}/lib/sdl_image/bin/*.dll")
-file(COPY ${SDL_DLLS} ${SDL_IMAGE_DLLS} DESTINATION ${CMAKE_BINARY_DIR})
+target_link_libraries(GoldenAxe
+        SDL3::SDL3-static
+        SDL3_image::SDL3_image-static
+        box2d
+)

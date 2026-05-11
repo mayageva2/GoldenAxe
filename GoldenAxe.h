@@ -1,15 +1,29 @@
 #pragma once
-#include <SDL3/SDL.h>
-#include <box2d/box2d.h>
+#include "bagel.h"
 #include <string>
 #include <iostream>
-#include "bagel.h"
+#include <SDL3/SDL_stdinc.h>
+#include <SDL3/SDL.h>
+#include <SDL3_image/SDL_image.h>
+#include <box2d/box2d.h>
+
+#define CHARACTERS_FILE "external/characters.png"
+#define ENEMIES_FILE "external/enemies.png"
+#define FLASK_FILE "external/flask.jpg"
+#define SANTA_FILE "external/santa.png"
+#define STAGE_FILE "external/stage.jpg"
 
 using namespace bagel;
 
-namespace GoldenAxe {
+namespace goldenaxe {
 
     // Structs Definitions
+    using Position =struct { float x, y; };
+    using Keys = struct { SDL_Scancode up,down,right,left,hit; };
+    using Intent = struct { bool up,down,right,left,hit; };
+    using Collider = struct {SDL_FRect part;};
+    using Movement =struct{ float vx, vy; };
+    using ChangeLives = struct {
     using Drawable = struct {
         SDL_FRect part;
         SDL_FRect dest;
@@ -30,35 +44,48 @@ namespace GoldenAxe {
         int lives = 3;
         int credits = 1;
     };
-
-    struct Score {
+    using Score = struct {
         int points = 0;
     };
-
+    using Drawable = struct { SDL_FRect part; SDL_FPoint size; SDL_Texture *texture; };
     enum class AIType { CHASER, RUNNER };
-    struct AI {
+    using AI =struct{
         bool active = true;
         float speed = 1.2f;
         AIType type = AIType::CHASER; // default chaser
     };
-
-    struct Hit {
+    using Hit =struct {
         bool is_attacking = false;
         int damage = 1;
     };
 
-    struct FlaskUsage {
+    //Can be useful to differ between warrior and enemy
+    using FlaskUsage = struct {
         int current_flasks = 0;
         int goal = 5;
     };
+    using Animation = struct {
+        int frame = 0;
+        float timer = 0.f;
+    };
+
+    using State = struct {
+        enum Type {
+            IDLE,
+            WALK,
+            ATTACK,
+            HIT
+        } type = IDLE;
+    };
+
 
     struct Collider {
         b2BodyId body;
     };
 
     // For Score System
-    struct EnemyKilledEvent {};
-    struct FlaskCollectedEvent {};
+    using EnemyKilledEvent = struct {};
+    using FlaskCollectedEvent = struct {};
 
     // Entities Creation
     static ent_type CreateHero(b2WorldId world, float x, float y) {
@@ -113,13 +140,12 @@ namespace GoldenAxe {
         ent_type santa = World::createEntity();
         World::addComponent(santa, Position{x, y});
         World::addComponent(santa, Movement{0, 0});
-        World::addComponent(santa, ChangeLives{1, 0});
         World::addComponent(santa, AI{true, 2.0f, AIType::RUNNER}); //santa is faster and running from player
         World::addComponent(santa, Drawable{{0,0,32,32}, {x,y,32,32}, 0});
         return santa;
     }
 
-    // Systems Implementations
+   /* // Systems Implementations
     class GameplaySystems {
     public:
         static void UpdateAI(ent_type player_entity) {
@@ -224,8 +250,131 @@ namespace GoldenAxe {
                 }
             }
         }
+    };*/
+
+    //Settings for positions (from images)
+    inline constexpr SDL_FRect HERO_IDLE = {
+        185, 20,
+        45, 70
     };
 
+    inline constexpr SDL_FRect HERO_WALK[] = {
+        { 10, 90, 45, 70 },
+        { 60, 90, 45, 70 },
+        {110, 90, 45, 70 },
+        {160, 90, 45, 70 }
+    };
+
+    inline constexpr SDL_FRect HERO_ATTACK = {
+        180, 170,
+        70, 70
+    };
+
+    inline constexpr SDL_FRect HERO_HIT = {
+        420, 120,
+        60, 60
+    };
+
+    inline constexpr SDL_FRect ENEMY_IDLE = {
+        10, 10,
+        55, 70
+    };
+
+    inline constexpr SDL_FRect ENEMY_WALK[] = {
+        { 10, 10, 55, 70 },
+        { 65, 10, 55, 70 },
+        {120, 10, 55, 70 },
+        {175, 10, 55, 70 }
+    };
+
+    inline constexpr SDL_FRect ENEMY_ATTACK = {
+        180, 90,
+        80, 70
+    };
+
+    inline constexpr SDL_FRect SANTA = {
+        95, 70,
+        120, 140
+    };
+
+    inline constexpr SDL_FRect FLASK = {
+        0, 0,
+        70, 70
+    };
+
+    static constexpr int	WIN_W = 800;
+    static constexpr int	WIN_H = 600;
+
+    inline bool overlap(SDL_FRect a, SDL_FRect b) {
+        bool widthoverlap=false;
+        bool heightoverlap=false;
+        if ((b.x<=a.x && a.x<=b.x+b.w)||((a.x<=b.x && b.x<=a.x+a.w)))
+         widthoverlap=true;
+        if ((b.y<=a.y && a.y<=b.y+b.h)||((a.y<=b.y && b.y<=a.y+a.h)))
+            heightoverlap=true;
+
+        return widthoverlap && heightoverlap;
+    }
+
+    inline bool outofbounds(SDL_FRect rect) {
+        return rect.x<=0 || rect.x+rect.w >= WIN_W || rect.y<=0 || rect.y+rect.h >= WIN_H;
+    }
+
+    class GoldenAxe {
+     private:
+
+        static constexpr int	WIN_W = 800;
+        static constexpr int	WIN_H = 600;
+
+        //Placements for the characters
+        static float constexpr upperStartingPosition = 120;
+        static float constexpr bottomStartingPosition = WIN_H - 120;
+        static float constexpr leftStartingPosition = 150;
+        static float constexpr rightStartingPosition = WIN_W - 150;
+        static float constexpr speed=1;
+
+        static constexpr int	FPS = 60;
+        static constexpr Uint64	GAME_FRAME = 1000/FPS;
+        static constexpr float	RAD_TO_DEG = 57.2958f;
+
+
+        static constexpr float TEX_SCALE = 1.f;
+        static constexpr float BOX_SCALE = 10.f;
+        //static constexpr float FLOOR_Y = 420.f;
+
+
+        SDL_Texture*		characterstex = nullptr;
+        SDL_Texture*		enemiestex = nullptr;
+        SDL_Texture*		flasktex = nullptr;
+        SDL_Texture*		santatex = nullptr;
+        SDL_Texture*		stagetex = nullptr;
+        SDL_Renderer*		ren = nullptr;
+        SDL_Window*			win = nullptr;
+        //b2WorldId box = b2_nullWorldId;
+
+        void box_system() const;
+        void input_system() const;
+        void move_system() const;
+        void score_system() const;
+        void draw_system() const;
+        void hit_system() const;
+        void resetStage() const;
+
+        static constexpr Drawable makeDrawable(SDL_FRect part, SDL_Texture* texture);
+        static constexpr  SDL_FRect colliderRect(const Position& p,const Drawable& d) ;
+
+     public:
+        GoldenAxe();
+        ~GoldenAxe(){};
+        /*bool valid() const {
+            return b2World_IsValid(this->box);
+        }*/
+        void run();
+    };
+
+
+
+}
     class DrawingSystem {
     public:
         static void updateAnimation(float deltaTime) {
