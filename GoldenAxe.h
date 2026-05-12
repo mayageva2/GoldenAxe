@@ -76,6 +76,7 @@ namespace goldenaxe {
         float timer = 0.0f;
         static bool is_anyone_attacking;
         static float global_attack_cooldown;
+        bool is_player_in_range = false;
     };
 
     struct Hit {

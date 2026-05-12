@@ -85,10 +85,18 @@ namespace goldenaxe {
         bodyDef.userData = (void*)(uintptr_t)enemy.id;
         b2BodyId body = b2CreateBody(world, &bodyDef);
 
+        // Collider
         b2Polygon box = b2MakeBox(w / 20.0f, h / 20.0f);
         b2ShapeDef shapeDef = b2DefaultShapeDef();
         b2CreatePolygonShape(body, &shapeDef, &box);
 
+        // Sensor
+        b2Polygon sensorBox = b2MakeBox(4.0f, 2.0f);
+        b2ShapeDef sensorDef = b2DefaultShapeDef();
+        sensorDef.isSensor = true;
+        b2CreatePolygonShape(body, &sensorDef, &sensorBox);
+
+        // Components
         World::addComponent(enemy, Position{x, y});
         World::addComponent(enemy, Movement{0, 0});
         World::addComponent(enemy, Collider{body});
@@ -310,6 +318,7 @@ namespace goldenaxe {
     void GoldenAxe::ai_system() const {
         Position heroPos = {0, 0};
         bool heroFound = false;
+
         for (Entity e = Entity::first(); !e.eof(); e.next()) {
             if (e.test(MaskBuilder().set<Keys>().set<Position>().set<Movement>().build())) {
                 heroPos = e.get<Position>();
@@ -338,6 +347,27 @@ namespace goldenaxe {
             }
         }
 
+        b2SensorEvents sensorEvents = b2World_GetSensorEvents(world);
+        for (int i = 0; i < sensorEvents.beginCount; ++i) {
+            b2SensorBeginTouchEvent event = sensorEvents.beginEvents[i];
+            id_type entId = (id_type)(uintptr_t)b2Body_GetUserData(b2Shape_GetBody(event.sensorShapeId));
+            Entity enemyEnt = Entity{{entId}};
+
+            if (enemyEnt.test(MaskBuilder().set<AI>().build())) {
+                enemyEnt.get<AI>().is_player_in_range = true;
+            }
+        }
+
+        for (int i = 0; i < sensorEvents.endCount; ++i) {
+            b2SensorEndTouchEvent event = sensorEvents.endEvents[i];
+            id_type entId = (id_type)(uintptr_t)b2Body_GetUserData(b2Shape_GetBody(event.sensorShapeId));
+            Entity enemyEnt = Entity{{entId}};
+
+            if (enemyEnt.test(MaskBuilder().set<AI>().build())) {
+                enemyEnt.get<AI>().is_player_in_range = false;
+            }
+        }
+
         for (Entity e = Entity::first(); !e.eof(); e.next()) {
             if (e.test(aiMask)) {
                 auto& ai = e.get<AI>();
@@ -347,12 +377,10 @@ namespace goldenaxe {
                 intent.left = intent.right = intent.up = intent.down = intent.hit = false;
                 float dx = heroPos.x - pos.x;
                 float dy = heroPos.y - pos.y;
-                float dist = sqrt(dx*dx + dy*dy);
 
                 switch (ai.state) {
                     case AIState::APPROACH:
-                        if (abs(dx) < 60 && abs(dy) < 20) {
-                            if (!AI::is_anyone_attacking && AI::global_attack_cooldown <= 0) {
+                        if (ai.is_player_in_range) {if (!AI::is_anyone_attacking && AI::global_attack_cooldown <= 0) {
                                 ai.state = AIState::ATTACK;
                                 ai.timer = 0.8f;
                                 AI::global_attack_cooldown = 120.0f;
@@ -368,7 +396,7 @@ namespace goldenaxe {
 
                     case AIState::WAIT:
                         ai.timer -= deltaTime;
-                        if (abs(dx) < 100) {
+                        if (abs(dx) < 80) {
                             if (dx > 0) intent.left = true; else intent.right = true;
                         }
                         if (ai.timer <= 0) ai.state = AIState::APPROACH;
