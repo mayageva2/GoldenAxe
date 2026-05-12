@@ -1,5 +1,6 @@
 #include "GoldenAxe.h"
 #include <iostream>
+#include <ctime>
 #include "bagel.h"
 
 using namespace std;
@@ -8,6 +9,8 @@ using namespace bagel;
 namespace goldenaxe {
 
     GoldenAxe::GoldenAxe() {
+        srand((unsigned int)time(NULL));
+
         if (!SDL_Init(SDL_INIT_VIDEO)) {
             cout << SDL_GetError() << endl;
             return;
@@ -68,7 +71,7 @@ namespace goldenaxe {
         World::addComponent(hero, Animation{4, 0, 0.12f, 0.0f,
             0, 82, 32, 70,
             -5, 145,32, 62,
-            42, 20.0f});
+            42, 20.0f, false});
 
         return hero;
     }
@@ -92,8 +95,11 @@ namespace goldenaxe {
         World::addComponent(enemy, Drawable{ENEMY_IDLE, {w, h}, texture});
         World::addComponent(enemy, Animation{4,0,0.15f,0.0f,
             0,10, 60, 75,
-            315,10,60, 75,
-            75,-15.0f});
+            370,20,40, 50,
+            50,-15.0f, true});
+        World::addComponent(enemy, Intent{false, false, false, false, false});
+        World::addComponent(enemy, AI{true, 0.8f, AIType::CHASER});
+
         return enemy;
     }
 
@@ -116,7 +122,6 @@ namespace goldenaxe {
         SDL_RenderClear(ren);
         SDL_RenderTexture(ren,stagetex,nullptr,nullptr);
 
-
         Mask mdraw = MaskBuilder().set<Drawable>().set<Position>().set<Movement>().build();
         for (auto e = Entity::first();!e.eof(); e.next()) {
             if (e.test(mdraw)) {
@@ -131,15 +136,19 @@ namespace goldenaxe {
                 SDL_FRect dest = { p.x, p.y - offsetY, scaledW, scaledH };
 
                 SDL_FlipMode flip = SDL_FLIP_NONE;
-                float finalX = p.x;
+                bool lookLeftInSheet = false;
+                float fOffset = 0;
 
-                if (mov.vx < 0) {
-                    flip = SDL_FLIP_HORIZONTAL;
-                    if (e.test(MaskBuilder().set<Animation>().build())) {
-                        finalX += e.get<Animation>().flipOffsetX;
-                    }
+                if (e.test(MaskBuilder().set<Animation>().build())) {
+                    const auto& anim = e.get<Animation>();
+                    lookLeftInSheet = anim.defaultLookLeft;
+                    fOffset = anim.flipOffsetX;
                 }
-                dest.x = finalX;
+                if ((!lookLeftInSheet && mov.vx < -0.1f) || (lookLeftInSheet && mov.vx > 0.1f)) {
+                    flip = SDL_FLIP_HORIZONTAL;
+                    dest.x += fOffset * TEX_SCALE;
+                }
+
                 SDL_RenderTextureRotated(ren, d.texture, &d.part, &dest, 0, nullptr, flip);
             }
         }
@@ -294,12 +303,103 @@ namespace goldenaxe {
         }
     }
 
+    bool AI::is_anyone_attacking = false;
+    float AI::global_attack_cooldown = 0.0f;
+    bool is_player_active = false;
+
+    void GoldenAxe::ai_system() const {
+        Position heroPos = {0, 0};
+        bool heroFound = false;
+        for (Entity e = Entity::first(); !e.eof(); e.next()) {
+            if (e.test(MaskBuilder().set<Keys>().set<Position>().set<Movement>().build())) {
+                heroPos = e.get<Position>();
+                heroFound = true;
+
+                const auto& mov = e.get<Movement>();
+                if (abs(mov.vx) > 0.1f || abs(mov.vy) > 0.1f) {
+                    is_player_active = true;
+                }
+                break;
+            }
+        }
+        if (!heroFound || !is_player_active) return;
+
+        float deltaTime = 1.0f / 60.0f;
+        if (AI::global_attack_cooldown > 0) {
+            AI::global_attack_cooldown -= deltaTime;
+        }
+
+        AI::is_anyone_attacking = false;
+        Mask aiMask = MaskBuilder().set<AI>().set<Intent>().set<Position>().build();
+        for (Entity e = Entity::first(); !e.eof(); e.next()) {
+            if (e.test(aiMask) && e.get<AI>().state == AIState::ATTACK) {
+                AI::is_anyone_attacking = true;
+                break;
+            }
+        }
+
+        for (Entity e = Entity::first(); !e.eof(); e.next()) {
+            if (e.test(aiMask)) {
+                auto& ai = e.get<AI>();
+                auto& intent = e.get<Intent>();
+                auto& pos = e.get<Position>();
+
+                intent.left = intent.right = intent.up = intent.down = intent.hit = false;
+                float dx = heroPos.x - pos.x;
+                float dy = heroPos.y - pos.y;
+                float dist = sqrt(dx*dx + dy*dy);
+
+                switch (ai.state) {
+                    case AIState::APPROACH:
+                        if (abs(dx) < 60 && abs(dy) < 20) {
+                            if (!AI::is_anyone_attacking && AI::global_attack_cooldown <= 0) {
+                                ai.state = AIState::ATTACK;
+                                ai.timer = 0.8f;
+                                AI::global_attack_cooldown = 120.0f;
+                            } else {
+                                ai.state = AIState::WAIT;
+                                ai.timer = 2.0f;
+                            }
+                        } else {
+                            if (dx > 5) intent.right = true; else if (dx < -5) intent.left = true;
+                            if (dy > 5) intent.down = true; else if (dy < -5) intent.up = true;
+                        }
+                        break;
+
+                    case AIState::WAIT:
+                        ai.timer -= deltaTime;
+                        if (abs(dx) < 100) {
+                            if (dx > 0) intent.left = true; else intent.right = true;
+                        }
+                        if (ai.timer <= 0) ai.state = AIState::APPROACH;
+                        break;
+
+                    case AIState::ATTACK:
+                        intent.hit = true;
+                        ai.timer -= deltaTime;
+                        if (ai.timer <= 0) {
+                            ai.state = AIState::COOLDOWN;
+                            ai.timer = 3.0f;
+                        }
+                        break;
+
+                    case AIState::COOLDOWN:
+                        ai.timer -= deltaTime;
+                        if (dx > 0) intent.left = true; else intent.right = true;
+                        if (ai.timer <= 0) ai.state = AIState::APPROACH;
+                        break;
+                }
+            }
+        }
+    }
+
     void GoldenAxe::resetStage() {
         Mask m = MaskBuilder().set<Movement>().build();
         for (auto e = Entity::first(); !e.eof(); e.next()) {
             if (e.test(m)) e.destroy();
         }
 
+        is_player_active = false;
         ent_type hero = CreateHero(world, leftStartingPosition, upperStartingPosition, characterstex);
         World::addComponent(hero, Intent{false, false, false, false, false});
         World::addComponent(hero, Keys{SDL_SCANCODE_W, SDL_SCANCODE_S, SDL_SCANCODE_D, SDL_SCANCODE_A, SDL_SCANCODE_F});
@@ -319,6 +419,7 @@ namespace goldenaxe {
 
             b2World_Step(world, 1.0f / 60.0f, 4);
             input_system();
+            ai_system();
             move_system();
             draw_system();
             animation_system(1.0f / 60.0f);

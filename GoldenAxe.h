@@ -54,6 +54,7 @@ namespace goldenaxe {
         float runX, runY, runW, runH;
         float frameWidth;
         float flipOffsetX;
+        bool defaultLookLeft = false;
     };
 
     struct ChangeLives {
@@ -66,10 +67,15 @@ namespace goldenaxe {
     };
 
     enum class AIType { CHASER, RUNNER };
+    enum class AIState { APPROACH, ATTACK, WAIT, COOLDOWN };
     struct AI {
         bool active = true;
         float speed = 1.2f;
         AIType type = AIType::CHASER;
+        AIState state = AIState::APPROACH;
+        float timer = 0.0f;
+        static bool is_anyone_attacking;
+        static float global_attack_cooldown;
     };
 
     struct Hit {
@@ -132,6 +138,7 @@ namespace goldenaxe {
 
         void box_system() const;
         void input_system() const;
+        void ai_system() const;
         void move_system() const;
         void score_system() const;
         void draw_system() const;
