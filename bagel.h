@@ -1,7 +1,8 @@
 #pragma once
-//#include <cstdlib>
+#include <cstdlib>
 #include <cstdint>
 #include <type_traits>
+#include <algorithm>
 
 namespace bagel
 {
