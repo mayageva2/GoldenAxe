@@ -49,6 +49,11 @@ namespace goldenaxe {
         int currentFrame = 0;
         float frameTime = 0.15f;
         float elapsed = 0.0f;
+
+        float idleX, idleY, idleW, idleH;
+        float runX, runY, runW, runH;
+        float frameWidth;
+        float flipOffsetX;
     };
 
     struct ChangeLives {
@@ -91,9 +96,9 @@ namespace goldenaxe {
 
     // --- Sprite Settings ---
 
-    inline constexpr SDL_FRect HERO_IDLE = { 185, 20, 45, 70 };
+    inline constexpr SDL_FRect HERO_IDLE = { 0, 55, 25, 55 };
     inline constexpr SDL_FRect HERO_ATTACK = { 180, 170, 70, 70 };
-    inline constexpr SDL_FRect ENEMY_IDLE = { 10, 10, 55, 70 };
+    inline constexpr SDL_FRect ENEMY_IDLE = { 0, 10, 55, 75 };
     inline constexpr SDL_FRect SANTA_RECT = { 95, 70, 120, 140 }; // renamed from SANTA to avoid conflict
 
     // --- Main Game Class ---
@@ -112,7 +117,7 @@ namespace goldenaxe {
         static constexpr int FPS = 60;
         static constexpr Uint64 GAME_FRAME = 1000 / FPS;
 
-        static constexpr float TEX_SCALE = 1.0f;
+        static constexpr float TEX_SCALE = 1.8f;
         static constexpr float BOX_SCALE = 10.0f;
 
         SDL_Window* win = nullptr;
@@ -130,6 +135,7 @@ namespace goldenaxe {
         void move_system() const;
         void score_system() const;
         void draw_system() const;
+        void animation_system(float deltaTime) const;
         void resetStage();
 
         static constexpr Drawable makeDrawable(SDL_FRect part, SDL_Texture* texture);

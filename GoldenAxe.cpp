@@ -65,6 +65,10 @@ namespace goldenaxe {
         World::addComponent(hero, Movement{0, 0});
         World::addComponent(hero, Collider{body});
         World::addComponent(hero, Drawable{HERO_IDLE, {HERO_IDLE.w, HERO_IDLE.h}, texture});
+        World::addComponent(hero, Animation{4, 0, 0.12f, 0.0f,
+            0, 82, 32, 70,
+            -5, 145,32, 62,
+            42, 20.0f});
 
         return hero;
     }
@@ -86,7 +90,10 @@ namespace goldenaxe {
         World::addComponent(enemy, Movement{0, 0});
         World::addComponent(enemy, Collider{body});
         World::addComponent(enemy, Drawable{ENEMY_IDLE, {w, h}, texture});
-
+        World::addComponent(enemy, Animation{4,0,0.15f,0.0f,
+            0,10, 60, 75,
+            315,10,60, 75,
+            75,-15.0f});
         return enemy;
     }
 
@@ -110,18 +117,71 @@ namespace goldenaxe {
         SDL_RenderTexture(ren,stagetex,nullptr,nullptr);
 
 
-        Mask mdraw = MaskBuilder().set<Drawable>().set<Position>().build();
+        Mask mdraw = MaskBuilder().set<Drawable>().set<Position>().set<Movement>().build();
         for (auto e = Entity::first();!e.eof(); e.next()) {
             if (e.test(mdraw)) {
-              const Drawable& d = e.get<Drawable>();
-              const Position& p = e.get<Position>();
-                SDL_FRect dest = { p.x, p.y, d.size.x, d.size.y };
-                if (d.texture) {
-                    SDL_RenderTexture(ren, d.texture, &d.part, &dest);
+                const Drawable& d = e.get<Drawable>();
+                const Position& p = e.get<Position>();
+                const auto& mov = e.get<Movement>();
+
+                float scaledW = d.size.x * TEX_SCALE;
+                float scaledH = d.size.y * TEX_SCALE;
+
+                float offsetY = scaledH - d.size.y;
+                SDL_FRect dest = { p.x, p.y - offsetY, scaledW, scaledH };
+
+                SDL_FlipMode flip = SDL_FLIP_NONE;
+                float finalX = p.x;
+
+                if (mov.vx < 0) {
+                    flip = SDL_FLIP_HORIZONTAL;
+                    if (e.test(MaskBuilder().set<Animation>().build())) {
+                        finalX += e.get<Animation>().flipOffsetX;
+                    }
                 }
+                dest.x = finalX;
+                SDL_RenderTextureRotated(ren, d.texture, &d.part, &dest, 0, nullptr, flip);
             }
         }
         SDL_RenderPresent(ren);
+    }
+
+    void GoldenAxe::animation_system(float deltaTime) const {
+        static const Mask animMask = MaskBuilder()
+            .set<Animation>().set<Drawable>().set<Movement>().build();
+
+        for (Entity e = Entity::first(); !e.eof(); e.next()) {
+            if (e.test(animMask)) {
+                auto& anim = e.get<Animation>();
+                auto& draw = e.get<Drawable>();
+                const auto& mov = e.get<Movement>();
+
+                if (mov.vx != 0 || mov.vy != 0) {
+                    anim.elapsed += deltaTime;
+                    if (anim.elapsed >= anim.frameTime) {
+                        anim.elapsed = 0.0f;
+                        anim.currentFrame = (anim.currentFrame + 1) % anim.numFrames;
+
+                        draw.part.x = anim.runX + (anim.currentFrame * anim.frameWidth);
+                        draw.part.y = anim.runY;
+                        draw.part.w = anim.runW;
+                        draw.part.h = anim.runH;
+
+                        draw.size.x = anim.runW;
+                        draw.size.y = anim.runH;
+                    }
+                } else {
+                    draw.part.x = anim.idleX;
+                    draw.part.y = anim.idleY;
+                    draw.part.w = anim.idleW;
+                    draw.part.h = anim.idleH;
+
+                    draw.size.x = anim.idleW;
+                    draw.size.y = anim.idleH;
+                    anim.currentFrame = 0;
+                }
+            }
+        }
     }
 
     void GoldenAxe::input_system() const {
@@ -261,6 +321,7 @@ namespace goldenaxe {
             input_system();
             move_system();
             draw_system();
+            animation_system(1.0f / 60.0f);
             SDL_Delay(16);
         }
         SDL_Quit();
