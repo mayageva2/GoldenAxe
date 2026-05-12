@@ -73,7 +73,10 @@ namespace goldenaxe {
             0, 82, 32, 70,
             -5, 145,32, 62,
             0, 345, 43, 65, 6,
-            42, 20.0f, false});
+            0, 485, 40, 55, 5,
+            42, 20.0f, false, 0.0f});
+        World::addComponent(hero, ChangeLives{3, 1});
+        World::addComponent(hero, Score{0});
 
         return hero;
     }
@@ -108,9 +111,11 @@ namespace goldenaxe {
             0,10, 60, 75,
             365,20,40, 50,
             0, 95, 60, 60, 9,
-            50,-15.0f, true});
+            295, 320, 50, 55, 5,
+            50,-15.0f, true, 0.0f});
         World::addComponent(enemy, Intent{false, false, false, false, false});
         World::addComponent(enemy, AI{true, 0.8f, AIType::CHASER});
+        World::addComponent(enemy, ChangeLives{1, 0});
 
         return enemy;
     }
@@ -179,7 +184,22 @@ namespace goldenaxe {
                 const auto& intent = e.get<Intent>();
 
                 anim.elapsed += deltaTime;
-                if (intent.hit) {
+                if (anim.hitTimer > 0) {
+                    float totalHitDuration = 4.0f;
+                    float timeElapsed = totalHitDuration - anim.hitTimer;
+                    int frameToDisplay = (int)(timeElapsed / (totalHitDuration / anim.hitFrames));
+
+                    if (frameToDisplay >= anim.hitFrames) frameToDisplay = anim.hitFrames - 1;
+
+                    draw.part.x = anim.hitX + (frameToDisplay * anim.frameWidth);
+                    draw.part.y = anim.hitY;
+                    draw.part.w = anim.hitW;
+                    draw.part.h = anim.hitH;
+                    draw.size = { anim.hitW, anim.hitH };
+
+                    continue;
+                }
+                else if (intent.hit) {
                     if (anim.elapsed >= anim.frameTime) {
                         anim.elapsed = 0.0f;
                         anim.currentFrame = (anim.currentFrame + 1) % anim.attackFrames;
@@ -449,6 +469,58 @@ namespace goldenaxe {
         }
     }
 
+    void GoldenAxe::combat_system(float deltaTime) const {
+        static const Mask attackerMask = MaskBuilder().set<Intent>().set<Position>().set<Animation>().build();
+        static const Mask victimMask = MaskBuilder().set<ChangeLives>().set<Position>().build();
+
+        for (Entity attacker = Entity::first(); !attacker.eof(); attacker.next()) {
+            if (!attacker.test(attackerMask)) continue;
+
+            auto& intent = attacker.get<Intent>();
+            auto& anim = attacker.get<Animation>();
+
+            if (intent.hit && anim.currentFrame >= 1) {
+                for (Entity victim = Entity::first(); !victim.eof(); victim.next()) {
+                    if (!victim.test(victimMask) || attacker.entity().id == victim.entity().id) continue;
+
+                    const auto& aPos = attacker.get<Position>();
+                    const auto& vPos = victim.get<Position>();
+
+                    float dx = abs(aPos.x - vPos.x);
+                    float dy = abs(aPos.y - vPos.y);
+
+                    if (dx < 70.0f && dy < 20.0f) {
+                        auto& vLife = victim.get<ChangeLives>();
+
+                        if (vLife.invulnTimer <= 0) {
+                            vLife.lives -= 1;
+                            vLife.invulnTimer = 0.8f;
+
+                            if (attacker.has<Score>()) {
+                                attacker.get<Score>().points += 100;
+                            }
+
+                            if (victim.has<Animation>()) {
+                                victim.get<Animation>().hitTimer = 2.0f;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for (Entity e = Entity::first(); !e.eof(); e.next()) {
+            if (e.has<ChangeLives>() && e.has<Animation>()) {
+                auto& lives = e.get<ChangeLives>();
+                auto& anim = e.get<Animation>();
+
+                if (lives.lives <= 0 && anim.hitTimer <= 0.01f) {
+                    e.destroy();
+                }
+            }
+        }
+    }
+
     void GoldenAxe::resetStage() {
         Mask m = MaskBuilder().set<Movement>().build();
         for (auto e = Entity::first(); !e.eof(); e.next()) {
@@ -466,19 +538,31 @@ namespace goldenaxe {
 
     void GoldenAxe::run() {
         resetStage();
-        bool quit =false;
+        bool quit = false;
+        const float dt = 1.0f / 60.0f;
         SDL_Event event;
+
         while (!quit) {
             while (SDL_PollEvent(&event)) {
                 if (event.type == SDL_EVENT_QUIT) quit = true;
             }
 
-            b2World_Step(world, 1.0f / 60.0f, 4);
+            b2World_Step(world, dt, 4);
             input_system();
             ai_system();
+
+            for (Entity e = Entity::first(); !e.eof(); e.next()) {
+                if (e.has<ChangeLives>()) {
+                    auto& cl = e.get<ChangeLives>();
+                    if (cl.invulnTimer > 0) cl.invulnTimer -= dt;
+                }
+            }
+
+            combat_system(dt);
             move_system();
             draw_system();
-            animation_system(1.0f / 60.0f);
+            animation_system(dt);
+
             SDL_Delay(16);
         }
         SDL_Quit();

@@ -56,14 +56,19 @@ namespace goldenaxe {
         float attackX, attackY, attackW, attackH;
         int attackFrames;
 
+        float hitX, hitY, hitW, hitH;
+        int hitFrames;
+
         float frameWidth;
         float flipOffsetX;
         bool defaultLookLeft = false;
+        float hitTimer = 0.0f;
     };
 
     struct ChangeLives {
         int lives = 3;
         int credits = 1;
+        float invulnTimer = 0.0f;
     };
 
     struct Score {
@@ -148,6 +153,7 @@ namespace goldenaxe {
         void score_system() const;
         void draw_system() const;
         void animation_system(float deltaTime) const;
+        void combat_system(float deltaTime) const;
         void resetStage();
 
         static constexpr Drawable makeDrawable(SDL_FRect part, SDL_Texture* texture);
@@ -190,4 +196,12 @@ template <> struct bagel::Storage<goldenaxe::Animation> final : bagel::NoInstanc
 
 template <> struct bagel::Storage<goldenaxe::Collider> final : bagel::NoInstance {
     using type = bagel::PackedStorage<goldenaxe::Collider>;
+};
+
+template <> struct bagel::Storage<goldenaxe::ChangeLives> final : bagel::NoInstance {
+    using type = bagel::PackedStorage<goldenaxe::ChangeLives>;
+};
+
+template <> struct bagel::Storage<goldenaxe::Score> final : bagel::NoInstance {
+    using type = bagel::PackedStorage<goldenaxe::Score>;
 };
