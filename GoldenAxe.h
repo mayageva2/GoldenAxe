@@ -52,6 +52,10 @@ namespace goldenaxe {
 
         float idleX, idleY, idleW, idleH;
         float runX, runY, runW, runH;
+
+        float attackX, attackY, attackW, attackH;
+        int attackFrames;
+
         float frameWidth;
         float flipOffsetX;
         bool defaultLookLeft = false;

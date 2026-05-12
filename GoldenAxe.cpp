@@ -62,6 +62,7 @@ namespace goldenaxe {
 
         b2Polygon box = b2MakeBox(2.0f, 3.0f);
         b2ShapeDef shapeDef = b2DefaultShapeDef();
+        shapeDef.enableSensorEvents = true;
         b2CreatePolygonShape(body, &shapeDef, &box);
 
         World::addComponent(hero, Position{x, y});
@@ -71,6 +72,7 @@ namespace goldenaxe {
         World::addComponent(hero, Animation{4, 0, 0.12f, 0.0f,
             0, 82, 32, 70,
             -5, 145,32, 62,
+            0, 345, 43, 65, 6,
             42, 20.0f, false});
 
         return hero;
@@ -91,9 +93,10 @@ namespace goldenaxe {
         b2CreatePolygonShape(body, &shapeDef, &box);
 
         // Sensor
-        b2Polygon sensorBox = b2MakeBox(4.0f, 2.0f);
+        b2Polygon sensorBox = b2MakeBox(6.0f, 2.0f);
         b2ShapeDef sensorDef = b2DefaultShapeDef();
         sensorDef.isSensor = true;
+        sensorDef.enableSensorEvents = true;
         b2CreatePolygonShape(body, &sensorDef, &sensorBox);
 
         // Components
@@ -101,9 +104,10 @@ namespace goldenaxe {
         World::addComponent(enemy, Movement{0, 0});
         World::addComponent(enemy, Collider{body});
         World::addComponent(enemy, Drawable{ENEMY_IDLE, {w, h}, texture});
-        World::addComponent(enemy, Animation{4,0,0.15f,0.0f,
+        World::addComponent(enemy, Animation{3,0,0.15f,0.0f,
             0,10, 60, 75,
-            370,20,40, 50,
+            365,20,40, 50,
+            0, 95, 60, 60, 9,
             50,-15.0f, true});
         World::addComponent(enemy, Intent{false, false, false, false, false});
         World::addComponent(enemy, AI{true, 0.8f, AIType::CHASER});
@@ -165,36 +169,43 @@ namespace goldenaxe {
 
     void GoldenAxe::animation_system(float deltaTime) const {
         static const Mask animMask = MaskBuilder()
-            .set<Animation>().set<Drawable>().set<Movement>().build();
+            .set<Animation>().set<Drawable>().set<Movement>().set<Intent>().build();
 
         for (Entity e = Entity::first(); !e.eof(); e.next()) {
             if (e.test(animMask)) {
                 auto& anim = e.get<Animation>();
                 auto& draw = e.get<Drawable>();
                 const auto& mov = e.get<Movement>();
+                const auto& intent = e.get<Intent>();
 
-                if (mov.vx != 0 || mov.vy != 0) {
-                    anim.elapsed += deltaTime;
+                anim.elapsed += deltaTime;
+                if (intent.hit) {
+                    if (anim.elapsed >= anim.frameTime) {
+                        anim.elapsed = 0.0f;
+                        anim.currentFrame = (anim.currentFrame + 1) % anim.attackFrames;
+                    }
+                    draw.part.x = anim.attackX + (anim.currentFrame * anim.frameWidth);
+                    draw.part.y = anim.attackY;
+                    draw.part.w = anim.attackW;
+                    draw.part.h = anim.attackH;
+                    draw.size = { anim.attackW, anim.attackH };
+                }
+
+                else if (mov.vx != 0 || mov.vy != 0) {
                     if (anim.elapsed >= anim.frameTime) {
                         anim.elapsed = 0.0f;
                         anim.currentFrame = (anim.currentFrame + 1) % anim.numFrames;
-
-                        draw.part.x = anim.runX + (anim.currentFrame * anim.frameWidth);
-                        draw.part.y = anim.runY;
-                        draw.part.w = anim.runW;
-                        draw.part.h = anim.runH;
-
-                        draw.size.x = anim.runW;
-                        draw.size.y = anim.runH;
                     }
-                } else {
-                    draw.part.x = anim.idleX;
-                    draw.part.y = anim.idleY;
-                    draw.part.w = anim.idleW;
-                    draw.part.h = anim.idleH;
+                    draw.part.x = anim.runX + (anim.currentFrame * anim.frameWidth);
+                    draw.part.y = anim.runY;
+                    draw.part.w = anim.runW;
+                    draw.part.h = anim.runH;
+                    draw.size = { anim.runW, anim.runH };
+                }
 
-                    draw.size.x = anim.idleW;
-                    draw.size.y = anim.idleH;
+                else {
+                    draw.part = { anim.idleX, anim.idleY, anim.idleW, anim.idleH };
+                    draw.size = { anim.idleW, anim.idleH };
                     anim.currentFrame = 0;
                 }
             }
@@ -229,19 +240,18 @@ namespace goldenaxe {
 
     void GoldenAxe::move_system() const {
         static const Mask movemask = MaskBuilder()
-        .set<Intent>()
-        .set<Position>()
-        .set<Movement>()
-        .set<Collider>()
-        .build();
+            .set<Intent>()
+            .set<Position>()
+            .set<Movement>()
+            .set<Collider>()
+            .build();
 
         static const Mask collidemask = MaskBuilder()
-        .set<Collider>()
-        .build();
+            .set<Collider>()
+            .build();
 
         for (Entity e = Entity::first(); !e.eof(); e.next()) {
-            if (e.test(movemask))
-            {
+            if (e.test(movemask)) {
                 bool canmove = true;
 
                 auto& pos = e.get<Position>();
@@ -249,20 +259,20 @@ namespace goldenaxe {
                 auto& intent = e.get<Intent>();
                 auto& col = e.get<Collider>();
 
+                float currentMaxSpeed = speed;
+                if (e.test(MaskBuilder().set<AI>().build())) {
+                    currentMaxSpeed = e.get<AI>().speed;
+                }
+
                 mov.vx = 0;
                 mov.vy = 0;
 
-                if (intent.left)
-                    mov.vx = -speed;
-
-                if (intent.right)
-                    mov.vx = speed;
-
-                if (intent.up)
-                    mov.vy = -speed;
-
-                if (intent.down)
-                    mov.vy = speed;
+                if (!intent.hit) {
+                    if (intent.left)  mov.vx = -currentMaxSpeed;
+                    if (intent.right) mov.vx = currentMaxSpeed;
+                    if (intent.up)    mov.vy = -currentMaxSpeed;
+                    if (intent.down)  mov.vy = currentMaxSpeed;
+                }
 
                 b2Vec2 currentPos = b2Body_GetPosition(col.body);
                 const auto& d = e.get<Drawable>();
@@ -276,6 +286,7 @@ namespace goldenaxe {
 
                 next.x += mov.vx;
                 next.y += mov.vy;
+
                 if (goldenaxe::outofbounds(next))
                     canmove = false;
 
@@ -298,8 +309,8 @@ namespace goldenaxe {
                             canmove = false;
                     }
                 }
-                if (canmove) {
 
+                if (canmove) {
                     b2Vec2 newPos = { next.x / BOX_SCALE, next.y / BOX_SCALE };
                     b2Rot currentRotation = b2Body_GetRotation(col.body);
                     b2Body_SetTransform(col.body, newPos, currentRotation);
@@ -350,21 +361,31 @@ namespace goldenaxe {
         b2SensorEvents sensorEvents = b2World_GetSensorEvents(world);
         for (int i = 0; i < sensorEvents.beginCount; ++i) {
             b2SensorBeginTouchEvent event = sensorEvents.beginEvents[i];
-            id_type entId = (id_type)(uintptr_t)b2Body_GetUserData(b2Shape_GetBody(event.sensorShapeId));
-            Entity enemyEnt = Entity{{entId}};
+            id_type enemyId = (id_type)(uintptr_t)b2Body_GetUserData(b2Shape_GetBody(event.sensorShapeId));
+            id_type visitorId = (id_type)(uintptr_t)b2Body_GetUserData(b2Shape_GetBody(event.visitorShapeId));
 
-            if (enemyEnt.test(MaskBuilder().set<AI>().build())) {
-                enemyEnt.get<AI>().is_player_in_range = true;
+            Entity enemyEnt = Entity{{enemyId}};
+            Entity visitorEnt = Entity{{visitorId}};
+            if (visitorEnt.test(MaskBuilder().set<Keys>().build())) {
+                if (enemyEnt.test(MaskBuilder().set<AI>().build())) {
+                    enemyEnt.get<AI>().is_player_in_range = true;
+                }
             }
         }
 
         for (int i = 0; i < sensorEvents.endCount; ++i) {
             b2SensorEndTouchEvent event = sensorEvents.endEvents[i];
-            id_type entId = (id_type)(uintptr_t)b2Body_GetUserData(b2Shape_GetBody(event.sensorShapeId));
-            Entity enemyEnt = Entity{{entId}};
 
-            if (enemyEnt.test(MaskBuilder().set<AI>().build())) {
-                enemyEnt.get<AI>().is_player_in_range = false;
+            id_type enemyId = (id_type)(uintptr_t)b2Body_GetUserData(b2Shape_GetBody(event.sensorShapeId));
+            id_type visitorId = (id_type)(uintptr_t)b2Body_GetUserData(b2Shape_GetBody(event.visitorShapeId));
+
+            Entity enemyEnt = Entity{{enemyId}};
+            Entity visitorEnt = Entity{{visitorId}};
+
+            if (visitorEnt.test(MaskBuilder().set<Keys>().build())) {
+                if (enemyEnt.test(MaskBuilder().set<AI>().build())) {
+                    enemyEnt.get<AI>().is_player_in_range = false;
+                }
             }
         }
 
@@ -380,24 +401,29 @@ namespace goldenaxe {
 
                 switch (ai.state) {
                     case AIState::APPROACH:
-                        if (ai.is_player_in_range) {if (!AI::is_anyone_attacking && AI::global_attack_cooldown <= 0) {
+                        if (ai.is_player_in_range) {
+                            if (!AI::is_anyone_attacking && AI::global_attack_cooldown <= 0) {
                                 ai.state = AIState::ATTACK;
-                                ai.timer = 0.8f;
-                                AI::global_attack_cooldown = 120.0f;
+                                ai.timer = 0.6f;
+                                AI::global_attack_cooldown = 1.5f;
                             } else {
                                 ai.state = AIState::WAIT;
-                                ai.timer = 2.0f;
+                                ai.timer = 0.5f + (rand() % 100 / 100.0f);
                             }
                         } else {
-                            if (dx > 5) intent.right = true; else if (dx < -5) intent.left = true;
-                            if (dy > 5) intent.down = true; else if (dy < -5) intent.up = true;
+                            if (abs(dy) > 10) {
+                                if (dy > 0) intent.down = true; else intent.up = true;
+                            }
+                            if (abs(dy) < 30) {
+                                if (dx > 20) intent.right = true; else if (dx < -20) intent.left = true;
+                            }
                         }
                         break;
 
                     case AIState::WAIT:
                         ai.timer -= deltaTime;
-                        if (abs(dx) < 80) {
-                            if (dx > 0) intent.left = true; else intent.right = true;
+                        if (abs(dy) < 40) {
+                            if (pos.y > heroPos.y) intent.down = true; else intent.up = true;
                         }
                         if (ai.timer <= 0) ai.state = AIState::APPROACH;
                         break;
@@ -407,13 +433,15 @@ namespace goldenaxe {
                         ai.timer -= deltaTime;
                         if (ai.timer <= 0) {
                             ai.state = AIState::COOLDOWN;
-                            ai.timer = 3.0f;
+                            ai.timer = 0.8f;
                         }
                         break;
 
                     case AIState::COOLDOWN:
                         ai.timer -= deltaTime;
-                        if (dx > 0) intent.left = true; else intent.right = true;
+                        if (abs(dx) < 80) {
+                            if (dx > 0) intent.left = true; else intent.right = true;
+                        }
                         if (ai.timer <= 0) ai.state = AIState::APPROACH;
                         break;
                 }
