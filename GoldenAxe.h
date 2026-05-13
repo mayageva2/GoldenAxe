@@ -63,6 +63,7 @@ namespace goldenaxe {
         float flipOffsetX;
         bool defaultLookLeft = false;
         float hitTimer = 0.0f;
+        float lieDeadTimer = 0.0f;
     };
 
     struct ChangeLives {

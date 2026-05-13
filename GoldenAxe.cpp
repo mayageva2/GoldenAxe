@@ -111,7 +111,7 @@ namespace goldenaxe {
             0,10, 60, 75,
             365,20,40, 50,
             0, 95, 60, 60, 9,
-            295, 320, 50, 55, 5,
+            255, 322, 55, 55, 5,
             50,-15.0f, true, 0.0f});
         World::addComponent(enemy, Intent{false, false, false, false, false});
         World::addComponent(enemy, AI{true, 0.8f, AIType::CHASER});
@@ -185,17 +185,31 @@ namespace goldenaxe {
 
                 anim.elapsed += deltaTime;
                 if (anim.hitTimer > 0) {
-                    float totalHitDuration = 4.0f;
+                    float totalHitDuration = 0.6f;
                     float timeElapsed = totalHitDuration - anim.hitTimer;
+                    if (timeElapsed < 0) timeElapsed = 0;
                     int frameToDisplay = (int)(timeElapsed / (totalHitDuration / anim.hitFrames));
 
-                    if (frameToDisplay >= anim.hitFrames) frameToDisplay = anim.hitFrames - 1;
+                    if (anim.hitTimer <= 0 || frameToDisplay >= anim.hitFrames) {
+                        frameToDisplay = anim.hitFrames - 1;
+                    }
 
-                    draw.part.x = anim.hitX + (frameToDisplay * anim.frameWidth);
+                    float frameXOffset = 0;
+                    float currentW = 45;
+                    switch (frameToDisplay) {
+                        case 0: frameXOffset = 0;   currentW = 45; break;
+                        case 1: frameXOffset = 45;  currentW = 45; break;
+                        case 2: frameXOffset = 90;  currentW = 45; break;
+                        case 3: frameXOffset = 135; currentW = 65; break;
+                        case 4: frameXOffset = 200; currentW = 55; break;
+                        default: frameXOffset = 200; currentW = 55; break;
+                    }
+
+                    draw.part.x = anim.hitX + frameXOffset;
                     draw.part.y = anim.hitY;
-                    draw.part.w = anim.hitW;
+                    draw.part.w = currentW;
                     draw.part.h = anim.hitH;
-                    draw.size = { anim.hitW, anim.hitH };
+                    draw.size = { currentW, anim.hitH };
 
                     continue;
                 }
@@ -272,6 +286,13 @@ namespace goldenaxe {
 
         for (Entity e = Entity::first(); !e.eof(); e.next()) {
             if (e.test(movemask)) {
+                if (e.has<Animation>() && e.get<Animation>().hitTimer > 0) {
+                    auto& mov = e.get<Movement>();
+                    mov.vx = 0;
+                    mov.vy = 0;
+                    continue;
+                }
+
                 bool canmove = true;
 
                 auto& pos = e.get<Position>();
@@ -485,37 +506,14 @@ namespace goldenaxe {
 
                     const auto& aPos = attacker.get<Position>();
                     const auto& vPos = victim.get<Position>();
-
-                    float dx = abs(aPos.x - vPos.x);
-                    float dy = abs(aPos.y - vPos.y);
-
-                    if (dx < 70.0f && dy < 20.0f) {
+                    if (abs(aPos.x - vPos.x) < 70.0f && abs(aPos.y - vPos.y) < 20.0f) {
                         auto& vLife = victim.get<ChangeLives>();
-
                         if (vLife.invulnTimer <= 0) {
                             vLife.lives -= 1;
                             vLife.invulnTimer = 0.8f;
-
-                            if (attacker.has<Score>()) {
-                                attacker.get<Score>().points += 100;
-                            }
-
-                            if (victim.has<Animation>()) {
-                                victim.get<Animation>().hitTimer = 2.0f;
-                            }
+                            if (victim.has<Animation>()) victim.get<Animation>().hitTimer = 0.5f;
                         }
                     }
-                }
-            }
-        }
-
-        for (Entity e = Entity::first(); !e.eof(); e.next()) {
-            if (e.has<ChangeLives>() && e.has<Animation>()) {
-                auto& lives = e.get<ChangeLives>();
-                auto& anim = e.get<Animation>();
-
-                if (lives.lives <= 0 && anim.hitTimer <= 0.01f) {
-                    e.destroy();
                 }
             }
         }
@@ -550,15 +548,40 @@ namespace goldenaxe {
             b2World_Step(world, dt, 4);
             input_system();
             ai_system();
+            combat_system(dt);
 
-            for (Entity e = Entity::first(); !e.eof(); e.next()) {
+            for (Entity e = Entity::first(); !e.eof(); ) {
+                bool entityWasDestroyed = false;
+                if (e.has<Animation>()) {
+                    auto& anim = e.get<Animation>();
+                    if (anim.hitTimer > 0) anim.hitTimer -= dt;
+                    if (anim.hitTimer <= 0 && anim.lieDeadTimer > 0) {
+                        anim.lieDeadTimer -= dt;
+                    }
+                }
+
                 if (e.has<ChangeLives>()) {
                     auto& cl = e.get<ChangeLives>();
                     if (cl.invulnTimer > 0) cl.invulnTimer -= dt;
+                    if (cl.lives <= 0) {
+                        auto& anim = e.get<Animation>();
+                        if (anim.hitTimer <= 0 && anim.lieDeadTimer <= 0) {
+                            if (e.has<Keys>()) {
+                                resetStage();
+                                break;
+                            } else {
+                                e.destroy();
+                                entityWasDestroyed = true;
+                            }
+                        }
+                    }
+                }
+
+                if (!entityWasDestroyed) {
+                    e.next();
                 }
             }
 
-            combat_system(dt);
             move_system();
             draw_system();
             animation_system(dt);
