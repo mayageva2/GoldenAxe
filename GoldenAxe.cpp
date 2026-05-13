@@ -328,8 +328,9 @@ namespace goldenaxe {
                 next.x += mov.vx;
                 next.y += mov.vy;
 
-                if (goldenaxe::outofbounds(next))
+                if (next.y < 0 || next.y > WIN_H - d.size.y || next.x < -100) {
                     canmove = false;
+                }
 
                 for (Entity e1 = Entity::first(); !e1.eof() && canmove; e1.next()) {
                     if (e1.entity().id == e.entity().id) continue;
@@ -536,6 +537,7 @@ namespace goldenaxe {
 
     void GoldenAxe::run() {
         resetStage();
+        totalKills = 0;
         bool quit = false;
         const float dt = 1.0f / 60.0f;
         SDL_Event event;
@@ -550,6 +552,8 @@ namespace goldenaxe {
             ai_system();
             combat_system(dt);
 
+            bool enemyFound = false;
+
             for (Entity e = Entity::first(); !e.eof(); ) {
                 bool entityWasDestroyed = false;
                 if (e.has<Animation>()) {
@@ -563,15 +567,26 @@ namespace goldenaxe {
                 if (e.has<ChangeLives>()) {
                     auto& cl = e.get<ChangeLives>();
                     if (cl.invulnTimer > 0) cl.invulnTimer -= dt;
+
+                    if (!e.has<Keys>()) {
+                        if (cl.lives > 0 || (e.has<Animation>() && e.get<Animation>().lieDeadTimer > 0)) {
+                            enemyFound = true;
+                        }
+                    }
+
                     if (cl.lives <= 0) {
                         auto& anim = e.get<Animation>();
                         if (anim.hitTimer <= 0 && anim.lieDeadTimer <= 0) {
                             if (e.has<Keys>()) {
+                                cout << "HERO DIED. Game Over." << endl;
                                 resetStage();
+                                totalKills = 0;
                                 break;
                             } else {
                                 e.destroy();
                                 entityWasDestroyed = true;
+                                totalKills++;
+                                cout << "Enemies Defeated: " << totalKills << " / " << KILLS_REQUIRED << endl;
                             }
                         }
                     }
@@ -579,6 +594,20 @@ namespace goldenaxe {
 
                 if (!entityWasDestroyed) {
                     e.next();
+                }
+            }
+
+            if (!enemyFound && totalKills < KILLS_REQUIRED) {
+                cout << "Next Wave! Enemies entering from the right..." << endl;
+                CreateEnemy(world, WIN_W + 50, upperStartingPosition, 55, 70, 4, enemiestex);
+                CreateEnemy(world, WIN_W + 50, bottomStartingPosition, 55, 70, 4, enemiestex);
+            }
+
+            if (totalKills >= KILLS_REQUIRED && !enemyFound) {
+                static bool winPrinted = false;
+                if (!winPrinted) {
+                    cout << "VICTORY! All 10 enemies defeated!" << endl;
+                    winPrinted = true;
                 }
             }
 
