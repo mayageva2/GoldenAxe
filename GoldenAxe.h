@@ -1,16 +1,75 @@
+#pragma once
 #include "bagel.h"
+#include <string>
+#include <iostream>
+#include <SDL3/SDL.h>
+#include <SDL3_image/SDL_image.h>
+#include <box2d/box2d.h>
+
+#define CHARACTERS_FILE "external/characters.png"
+#define ENEMIES_FILE "external/enemies.png"
+#define FLASK_FILE "external/flask.jpg"
+#define SANTA_FILE "external/santa.png"
+#define STAGE_FILE "external/stage.jpg"
 
 using namespace bagel;
 
-namespace GoldenAxe {
+namespace goldenaxe {
 
-    // Structs Definitions
-    struct Position { float x, y; };
-    struct Movement { float vx, vy; };
+    // --- Components Definitions ---
+
+    struct Position {
+        float x, y;
+    };
+
+    struct Movement {
+        float vx, vy;
+    };
+
+    struct Collider {
+        b2BodyId body;
+    };
+
+    struct Keys {
+        SDL_Scancode up, down, right, left, hit;
+    };
+
+    struct Intent {
+        bool up, down, right, left, hit;
+    };
+
+    struct Drawable {
+        SDL_FRect part;
+        SDL_FPoint size;
+        SDL_Texture* texture;
+    };
+
+    struct Animation {
+        int numFrames = 1;
+        int currentFrame = 0;
+        float frameTime = 0.15f;
+        float elapsed = 0.0f;
+
+        float idleX, idleY, idleW, idleH;
+        float runX, runY, runW, runH;
+
+        float attackX, attackY, attackW, attackH;
+        int attackFrames;
+
+        float hitX, hitY, hitW, hitH;
+        int hitFrames;
+
+        float frameWidth;
+        float flipOffsetX;
+        bool defaultLookLeft = false;
+        float hitTimer = 0.0f;
+        float lieDeadTimer = 0.0f;
+    };
 
     struct ChangeLives {
         int lives = 3;
         int credits = 1;
+        float invulnTimer = 0.0f;
     };
 
     struct Score {
@@ -18,10 +77,16 @@ namespace GoldenAxe {
     };
 
     enum class AIType { CHASER, RUNNER };
+    enum class AIState { APPROACH, ATTACK, WAIT, COOLDOWN };
     struct AI {
         bool active = true;
         float speed = 1.2f;
-        AIType type = AIType::CHASER; // default chaser
+        AIType type = AIType::CHASER;
+        AIState state = AIState::APPROACH;
+        float timer = 0.0f;
+        static bool is_anyone_attacking;
+        static float global_attack_cooldown;
+        bool is_player_in_range = false;
     };
 
     struct Hit {
@@ -34,144 +99,113 @@ namespace GoldenAxe {
         int goal = 5;
     };
 
-    // For Score System
+    // Events (Tags)
     struct EnemyKilledEvent {};
     struct FlaskCollectedEvent {};
 
-    // Entities Creation
-    static ent_type CreateHero(float x, float y) {
-        ent_type hero = World::createEntity();
-        World::addComponent(hero, Position{x, y});
-        World::addComponent(hero, Movement{0, 0});
-        World::addComponent(hero, ChangeLives{3, 1});
-        World::addComponent(hero, Hit{false, 1});
-        World::addComponent(hero, FlaskUsage{0, 5});
-        World::addComponent(hero, Score{0});
-        return hero;
+    inline bool outofbounds(SDL_FRect rect) {
+        return rect.x <= 0 || rect.x + rect.w >= 800 || rect.y <= 0 || rect.y + rect.h >= 600;
     }
 
-    static ent_type CreateEnemy(float x, float y) {
-        ent_type enemy = World::createEntity();
-        World::addComponent(enemy, Position{x, y});
-        World::addComponent(enemy, Movement{0, 0});
-        World::addComponent(enemy, ChangeLives{1, 0});
-        World::addComponent(enemy, AI{true, 1.0f});
-        return enemy;
+    inline bool overlap(SDL_FRect a, SDL_FRect b) {
+        return (a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y);
     }
 
-    static ent_type CreateSanta(float x, float y) {
-        ent_type santa = World::createEntity();
-        World::addComponent(santa, Position{x, y});
-        World::addComponent(santa, Movement{0, 0});
-        World::addComponent(santa, ChangeLives{1, 0});
-        World::addComponent(santa, AI{true, 2.0f, AIType::RUNNER}); //santa is faster and running from player
-        return santa;
-    }
+    // --- Sprite Settings ---
 
-    // Systems Implementations
-    class GameplaySystems {
+    inline constexpr SDL_FRect HERO_IDLE = { 0, 55, 25, 55 };
+    inline constexpr SDL_FRect HERO_ATTACK = { 180, 170, 70, 70 };
+    inline constexpr SDL_FRect ENEMY_IDLE = { 0, 10, 55, 75 };
+    inline constexpr SDL_FRect SANTA_RECT = { 95, 70, 120, 140 }; // renamed from SANTA to avoid conflict
+
+    // --- Main Game Class ---
+
+    class GoldenAxe {
+    private:
+        static constexpr int WIN_W = 800;
+        static constexpr int WIN_H = 600;
+
+        static float constexpr upperStartingPosition = 120;
+        static float constexpr bottomStartingPosition = WIN_H - 120;
+        static float constexpr leftStartingPosition = 150;
+        static float constexpr rightStartingPosition = WIN_W - 150;
+        static float constexpr speed = 2.0f;
+
+        static constexpr int FPS = 60;
+        static constexpr Uint64 GAME_FRAME = 1000 / FPS;
+
+        static constexpr float TEX_SCALE = 1.8f;
+        static constexpr float BOX_SCALE = 10.0f;
+
+        SDL_Window* win = nullptr;
+        SDL_Renderer* ren = nullptr;
+        SDL_Texture* characterstex = nullptr;
+        SDL_Texture* enemiestex = nullptr;
+        SDL_Texture* flasktex = nullptr;
+        SDL_Texture* santatex = nullptr;
+        SDL_Texture* stagetex = nullptr;
+
+        b2WorldId world = b2_nullWorldId;
+        int totalKills = 0;
+        static constexpr int KILLS_REQUIRED = 10;
+        bool waveInProgress = true;
+
+        void box_system() const;
+        void input_system() const;
+        void ai_system() const;
+        void move_system() const;
+        void score_system() const;
+        void draw_system() const;
+        void animation_system(float deltaTime) const;
+        void combat_system(float deltaTime) const;
+        void resetStage();
+
+        static constexpr Drawable makeDrawable(SDL_FRect part, SDL_Texture* texture);
+        static constexpr SDL_FRect colliderRect(const Position& p, const Drawable& d);
+
     public:
-        static void UpdateAI(ent_type player_entity) {
-            auto& player_pos = World::getComponent<Position>(player_entity);
-
-            for (int i = 0; i <= World::maxId(); ++i) {
-                ent_type e{i};
-                if (World::mask(e).test(Component<AI>::Bit) &&
-                    World::mask(e).test(Component<Movement>::Bit)) {
-
-                    auto& enemy_pos = World::getComponent<Position>(e);
-                    auto& enemy_mov = World::getComponent<Movement>(e);
-                    auto& enemy_ai = World::getComponent<AI>(e);
-
-                    if (enemy_pos.x < player_pos.x) {
-                        enemy_mov.vx = (enemy_ai.type == AIType::CHASER) ? enemy_ai.speed : -enemy_ai.speed;
-                    } else {
-                        enemy_mov.vx = (enemy_ai.type == AIType::CHASER) ? -enemy_ai.speed : enemy_ai.speed;
-                    }
-                }
-            }
-        }
-
-        static void useMagic(ent_type player) {
-            auto& flasks = World::getComponent<FlaskUsage>(player);
-
-            if (flasks.current_flasks >= flasks.goal) {
-                std::cout << "!!! CASTING ULTIMATE MAGIC !!!" << std::endl;
-
-                for (int i = 0; i <= World::maxId(); ++i) {
-                    ent_type e{i};
-                    if (World::mask(e).test(Component<AI>::Bit)) {
-                        auto& lives = World::getComponent<ChangeLives>(e);
-                        if (lives.lives > 0) {
-                            lives.lives = 0;
-                            World::addComponent(e, EnemyKilledEvent{});
-                        }
-                    }
-                }
-
-                flasks.current_flasks = 0;
-            } else {
-                std::cout << "Not enough flasks for magic! Current: "
-                          << flasks.current_flasks << "/" << flasks.goal << std::endl;
-            }
-        }
-
-        static void collectFlask(ent_type player) {
-            auto& flasks = World::getComponent<FlaskUsage>(player);
-
-            if (flasks.current_flasks < flasks.goal) {
-                flasks.current_flasks++;
-                World::addComponent(player, FlaskCollectedEvent{});
-
-                std::cout << "Flask Collected! Current Magic: "
-                          << flasks.current_flasks << "/" << flasks.goal << std::endl;
-            }
-        }
+        GoldenAxe();
+        ~GoldenAxe();
+        void run();
     };
 
-    class CombatSystem {
+    // --- Factory Functions ---
+
+    static ent_type CreateHero(b2WorldId world, float x, float y, SDL_Texture* texture);
+    static ent_type CreateEnemy(b2WorldId world, float x, float y, float w, float h, int frames, SDL_Texture* texture);
+    static ent_type CreateSanta(b2WorldId world, float x, float y);
+
+    // --- Specialized Systems ---
+
+    class AISystem {
     public:
-        static void checkAttack(ent_type attacker, ent_type victim) {
-            auto& hit = World::getComponent<Hit>(attacker);
-            auto& victim_stats = World::getComponent<ChangeLives>(victim);
-            auto& attacker_pos = World::getComponent<Position>(attacker);
-            auto& victim_pos = World::getComponent<Position>(victim);
-
-            if (hit.is_attacking) {
-                float dist = std::abs(attacker_pos.x - victim_pos.x);
-                if (dist < 50.0f) {
-                    victim_stats.lives -= hit.damage;
-                    std::cout << "Hit! Victim lives left: " << victim_stats.lives << std::endl;
-
-                    if (victim_stats.lives <= 0 && !World::mask(victim).test(Component<EnemyKilledEvent>::Bit)) {                        World::addComponent(victim, EnemyKilledEvent{});
-                        World::addComponent(victim, EnemyKilledEvent{});
-                    }
-
-                    hit.is_attacking = false;
-                }
-            }
-        }
+        static void update(Entity player);
     };
 
-    class ScoreSystem {
+    class DrawingSystem {
     public:
-        static void update(ent_type player) {
-            auto& score = World::getComponent<Score>(player);
-
-            for (int i = 0; i <= World::maxId(); ++i) {
-                ent_type e{i};
-                auto mask = World::mask(e);
-
-                if (mask.test(Component<EnemyKilledEvent>::Bit)) {
-                    score.points += 100;
-                    //World::removeComponent<EnemyKilledEvent>(e);
-                }
-
-                if (mask.test(Component<FlaskCollectedEvent>::Bit)) {
-                    score.points += 50;
-                    //World::removeComponent<FlaskCollectedEvent>(e);
-                }
-            }
-        }
+        static void updateAnimation(float deltaTime);
+        static void draw(SDL_Renderer* ren);
     };
+
 }
+
+template <> struct bagel::Storage<goldenaxe::AI> final : bagel::NoInstance {
+    using type = bagel::PackedStorage<goldenaxe::AI>;
+};
+
+template <> struct bagel::Storage<goldenaxe::Animation> final : bagel::NoInstance {
+    using type = bagel::PackedStorage<goldenaxe::Animation>;
+};
+
+template <> struct bagel::Storage<goldenaxe::Collider> final : bagel::NoInstance {
+    using type = bagel::PackedStorage<goldenaxe::Collider>;
+};
+
+template <> struct bagel::Storage<goldenaxe::ChangeLives> final : bagel::NoInstance {
+    using type = bagel::PackedStorage<goldenaxe::ChangeLives>;
+};
+
+template <> struct bagel::Storage<goldenaxe::Score> final : bagel::NoInstance {
+    using type = bagel::PackedStorage<goldenaxe::Score>;
+};

@@ -2,10 +2,17 @@
 #include "bagel.h"
 #include "GoldenAxe.h"
 
+
 using namespace bagel;
-using namespace GoldenAxe;
+using namespace goldenaxe;
 
 int main() {
+
+    goldenaxe::GoldenAxe().run();
+
+   /* if (!SDL_Init(SDL_INIT_VIDEO))
+
+
     std::cout << "--- Golden Axe Logic Test ---" << std::endl;
 
     auto player = CreateHero(100.0f, 100.0f);
@@ -56,6 +63,6 @@ int main() {
     auto& finalScore = World::getComponent<Score>(player);
     std::cout << "\nFinal Score: " << finalScore.points << std::endl;
     std::cout << "Test Finished." << std::endl;
-
+*/
     return 0;
 }
