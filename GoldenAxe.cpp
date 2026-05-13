@@ -16,7 +16,7 @@ namespace goldenaxe {
             return;
         }
 
-        if (!SDL_CreateWindowAndRenderer("Golden Axe", WIN_W, WIN_H, 0, &win, &ren)) {
+        if (!SDL_CreateWindowAndRenderer("Golden Axe", SCREEN_W, SCREEN_H, 0, &win, &ren)) {
             cout << SDL_GetError() << endl;
             return;
         }
@@ -38,6 +38,9 @@ namespace goldenaxe {
 
         if (!stagetex) cout << "Warning: Could not load textures. Check external folder!" << endl;
     }
+
+    STAGE_INDEX GoldenAxe::currStage =
+        STAGE_INDEX::STAGE1;
 
     GoldenAxe::~GoldenAxe() {
         if (b2World_IsValid(world)) b2DestroyWorld(world);
@@ -137,7 +140,19 @@ namespace goldenaxe {
 
         SDL_SetRenderDrawColor(ren,0,0,0,255);
         SDL_RenderClear(ren);
-        SDL_RenderTexture(ren,stagetex,nullptr,nullptr);
+        SDL_FRect dst = {
+            0,
+            0,
+            SCREEN_W,
+            SCREEN_H
+        };
+
+        SDL_RenderTexture(
+            ren,
+            stagetex,
+            &stageFrame,
+            &dst
+        );
 
         Mask mdraw = MaskBuilder().set<Drawable>().set<Position>().set<Movement>().build();
         for (auto e = Entity::first();!e.eof(); e.next()) {
@@ -328,8 +343,29 @@ namespace goldenaxe {
                 next.x += mov.vx;
                 next.y += mov.vy;
 
-                if (goldenaxe::outofbounds(next))
+                float left =leftBound(currStage,next.y);
+                float right =rightBound(currStage,next.y);
+
+                const auto& b =STAGE_BOUNDS[static_cast<int>(currStage)];
+
+                float top =
+                    b.topY * SCALE_Y;
+
+                float bottom =
+                    b.bottomY * SCALE_Y;
+
+                if (next.x < left)
                     canmove = false;
+
+                if (next.x + next.w > right)
+                    canmove = false;
+
+                if (next.y < top)
+                    canmove = false;
+
+                if (next.y + next.h > bottom)
+                    canmove = false;
+
 
                 for (Entity e1 = Entity::first(); !e1.eof() && canmove; e1.next()) {
                     if (e1.entity().id == e.entity().id) continue;
@@ -520,18 +556,84 @@ namespace goldenaxe {
     }
 
     void GoldenAxe::resetStage() {
-        Mask m = MaskBuilder().set<Movement>().build();
-        for (auto e = Entity::first(); !e.eof(); e.next()) {
-            if (e.test(m)) e.destroy();
-        }
+
+        Mask m =
+            MaskBuilder()
+            .set<Movement>()
+            .build();
+
+        const auto& s =SPAWNS[
+        static_cast<int>(currStage)
+    ];
+
+        for (auto e = Entity::first();
+             !e.eof();
+             e.next()) {
+
+            if (e.test(m))
+                e.destroy();
+             }
 
         is_player_active = false;
-        ent_type hero = CreateHero(world, leftStartingPosition, upperStartingPosition, characterstex);
-        World::addComponent(hero, Intent{false, false, false, false, false});
-        World::addComponent(hero, Keys{SDL_SCANCODE_W, SDL_SCANCODE_S, SDL_SCANCODE_D, SDL_SCANCODE_A, SDL_SCANCODE_F});
 
-        CreateEnemy(world, rightStartingPosition, upperStartingPosition, 55, 70, 4, enemiestex);
-        CreateEnemy(world, rightStartingPosition, bottomStartingPosition, 55, 70, 4, enemiestex);
+        // Hero 1
+        ent_type hero =
+            CreateHero(
+                world,
+                s.hero1.x,
+                s.hero1.y,
+                characterstex
+            );
+
+        World::addComponent(
+            hero,
+            Intent{
+                false,false,
+                false,false,
+                false
+            }
+        );
+
+        World::addComponent(
+            hero,
+            Keys{
+                SDL_SCANCODE_W,
+                SDL_SCANCODE_S,
+                SDL_SCANCODE_D,
+                SDL_SCANCODE_A,
+                SDL_SCANCODE_F
+            }
+        );
+
+        /*// Hero 2
+        CreateHero(
+            world,
+            s.hero2.x,
+            s.hero2.y,
+            characterstex
+        );*/
+
+        // Enemy 1
+        CreateEnemy(
+            world,
+            s.enemy1.x,
+            s.enemy1.y,
+            55,
+            70,
+            4,
+            enemiestex
+        );
+
+        // Enemy 2
+        CreateEnemy(
+            world,
+            s.enemy2.x,
+            s.enemy2.y,
+            55,
+            70,
+            4,
+            enemiestex
+        );
     }
 
     void GoldenAxe::run() {
