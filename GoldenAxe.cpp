@@ -359,7 +359,6 @@ namespace goldenaxe {
 
                 if (next.x + next.w > right)
                     canmove = false;
-                }
 
                 if (next.y < top)
                     canmove = false;

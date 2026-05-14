@@ -341,6 +341,8 @@ namespace goldenaxe {
 
         static constexpr Drawable makeDrawable(SDL_FRect part, SDL_Texture* texture);
         static constexpr SDL_FRect colliderRect(const Position& p, const Drawable& d);
+        static constexpr float upperStartingPosition = 300.0f;
+        static constexpr float bottomStartingPosition = 500.0f;
 
     public:
         GoldenAxe();
