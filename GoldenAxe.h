@@ -325,6 +325,9 @@ namespace goldenaxe {
         SDL_Texture* stagetex = nullptr;
 
         b2WorldId world = b2_nullWorldId;
+        int totalKills = 0;
+        static constexpr int KILLS_REQUIRED = 10;
+        bool waveInProgress = true;
 
         void box_system() const;
         void input_system() const;
