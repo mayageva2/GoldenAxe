@@ -417,194 +417,216 @@ namespace goldenaxe {
             }
     }
 
-    void GoldenAxe::move_system() const {
-        static const Mask movemask = MaskBuilder()
-            .set<Intent>()
-            .set<Position>()
-            .set<Movement>()
-            .set<Collider>()
-            .build();
+   void GoldenAxe::move_system() const {
 
-        static const Mask collidemask = MaskBuilder()
-            .set<Collider>()
-            .build();
+    static const Mask movemask =
+        MaskBuilder()
+        .set<Intent>()
+        .set<Position>()
+        .set<Movement>()
+        .set<Collider>()
+        .build();
 
-        for (Entity e = Entity::first(); !e.eof(); e.next()) {
-            if (e.test(movemask)) {
-                if (e.has<Animation>() && e.get<Animation>().hitTimer > 0) {
-                    auto& mov = e.get<Movement>();
-                    mov.vx = 0;
-                    mov.vy = 0;
-                    continue;
-                }
+    static const Mask collidemask =
+        MaskBuilder()
+        .set<Collider>()
+        .build();
 
-                bool canmove = true;
+    for (Entity e = Entity::first();
+         !e.eof();
+         e.next()) {
 
-                auto& pos = e.get<Position>();
-                auto& mov = e.get<Movement>();
-                auto& intent = e.get<Intent>();
-                auto& col = e.get<Collider>();
+        if (!e.test(movemask))
+            continue;
 
-                float currentMaxSpeed = speed;
-                if (e.test(MaskBuilder().set<AI>().build())) {
-                    currentMaxSpeed = e.get<AI>().speed;
-                }
+        // stun / hit freeze
+        if (e.has<Animation>() &&
+            e.get<Animation>().hitTimer > 0) {
 
-                mov.vx = 0;
-                mov.vy = 0;
+            auto& mov = e.get<Movement>();
 
-                if (!intent.hit) {
-                    if (intent.left)  mov.vx = -currentMaxSpeed;
-                    if (intent.right) mov.vx = currentMaxSpeed;
-                    if (intent.up)    mov.vy = -currentMaxSpeed;
-                    if (intent.down)  mov.vy = currentMaxSpeed;
-                }
+            mov.vx = 0;
+            mov.vy = 0;
 
-                b2Vec2 currentPos = b2Body_GetPosition(col.body);
-                const auto& d = e.get<Drawable>();
+            continue;
+        }
 
-                SDL_FRect next = {
-                    currentPos.x * BOX_SCALE,
-                    currentPos.y * BOX_SCALE,
-                    d.size.x,
-                    d.size.y
-                };
+        auto& pos = e.get<Position>();
+        auto& mov = e.get<Movement>();
+        auto& intent = e.get<Intent>();
+        auto& col = e.get<Collider>();
 
-                next.x += mov.vx;
-                next.y += mov.vy;
+        // movement speed
+        float currentMaxSpeed = speed;
 
-                if (mov.vx == 0)
-                    next.x = pos.x;
+        if (e.test(
+            MaskBuilder()
+            .set<AI>()
+            .build()))
+        {
+            currentMaxSpeed =
+                e.get<AI>().speed;
+        }
 
-                if (mov.vy == 0)
-                    next.y = pos.y;
+        // reset velocity
+        mov.vx = 0;
+        mov.vy = 0;
 
-                float left =leftBound(currStage,next.y);
-                float right =rightBound(currStage,next.y);
+        // input
+        if (!intent.hit) {
 
-                const auto& b =STAGE_BOUNDS[static_cast<int>(currStage)];
+            if (intent.left)
+                mov.vx = -currentMaxSpeed;
 
-                float top =
-                    b.topY * SCALE_Y;
+            if (intent.right)
+                mov.vx = currentMaxSpeed;
 
-                float bottom =
-                    b.bottomY * SCALE_Y;
+            if (intent.up)
+                mov.vy = -currentMaxSpeed;
 
-                if (next.x < left)
-                    canmove = false;
+            if (intent.down)
+                mov.vy = currentMaxSpeed;
+        }
 
-                if (next.x + next.w > right)
-                    canmove = false;
+        // physics position
+        b2Vec2 currentPos =
+            b2Body_GetPosition(col.body);
 
-                if (next.y < top)
-                    canmove = false;
+        const auto& d =
+            e.get<Drawable>();
 
-                if (next.y + next.h > bottom)
-                    canmove = false;
+        // next position
+        SDL_FRect next = {
 
+            currentPos.x * BOX_SCALE,
 
+            currentPos.y * BOX_SCALE,
 
-                for (Entity e1 = Entity::first(); !e1.eof() && canmove; e1.next()) {
-                    if (e1.entity().id == e.entity().id) continue;
+            d.size.x,
 
-                    if (e1.test(collidemask)) {
-                        const auto& c1 = e1.get<Collider>();
-                        const auto& d1 = e1.get<Drawable>();
+            d.size.y
+        };
 
-                        b2Vec2 p1 = b2Body_GetPosition(c1.body);
-                        SDL_FRect rect1 = {
-                            p1.x * BOX_SCALE,
-                            p1.y * BOX_SCALE,
-                            d1.size.x,
-                            d1.size.y
-                        };
+        next.x += mov.vx;
+        next.y += mov.vy;
 
-                        if (goldenaxe::overlap(next, rect1))
-                            canmove = false;
-                    }
-                }
+        // prevent float drift
+        if (mov.vx == 0)
+            next.x = pos.x;
 
-                float oldX = currentPos.x * BOX_SCALE;
-                float oldY = currentPos.y * BOX_SCALE;
+        if (mov.vy == 0)
+            next.y = pos.y;
 
-                // ----- X movement test -----
+        // stage bounds
+        float left =
+            leftBound(
+                currStage,
+                next.y
+            );
 
-                SDL_FRect testX = next;
-                testX.y = oldY;
+        float right =
+            rightBound(
+                currStage,
+                next.y
+            );
 
-                bool canMoveX = true;
+        const auto& b =
+            STAGE_BOUNDS[
+                static_cast<int>(
+                    currStage
+                )
+            ];
 
-                float leftX =
-                    leftBound(currStage, testX.y);
+        float top =
+            b.topY * SCALE_Y;
 
-                float rightX =
-                    rightBound(currStage, testX.y);
+        float bottom =
+            b.bottomY * SCALE_Y;
 
-                if (testX.x < leftX)
-                    canMoveX = false;
+        // clamp to stage instead of blocking
+        next.x = std::clamp(
+            next.x,
+            left,
+            right - next.w
+        );
 
-                if (testX.x + testX.w > rightX)
-                    canMoveX = false;
+        next.y = std::clamp(
+            next.y,
+            top,
+            bottom - next.h
+        );
 
-                // ----- Y movement test -----
+        // collision check
+        bool collided = false;
 
-                SDL_FRect testY = next;
-                testY.x = oldX;
+        for (Entity e1 = Entity::first();
+             !e1.eof();
+             e1.next()) {
 
-                bool canMoveY = true;
+            if (e1.entity().id ==
+                e.entity().id)
+                continue;
 
-                float leftY =
-                    leftBound(currStage, testY.y);
+            if (!e1.test(collidemask))
+                continue;
 
-                float rightY =
-                    rightBound(currStage, testY.y);
+            const auto& c1 =
+                e1.get<Collider>();
 
-                if (testY.x < leftY)
-                    canMoveY = false;
+            const auto& d1 =
+                e1.get<Drawable>();
 
-                if (testY.x + testY.w > rightY)
-                    canMoveY = false;
-
-                if (testY.y < top)
-                    canMoveY = false;
-
-                if (testY.y + testY.h > bottom)
-                    canMoveY = false;
-
-                // ----- Apply movement separately -----
-
-                float finalX = oldX;
-                float finalY = oldY;
-
-                if (canMoveX)
-                    finalX = testX.x;
-
-                if (canMoveY)
-                    finalY = testY.y;
-
-                // ----- Update physics -----
-
-                b2Vec2 newPos = {
-                    finalX / BOX_SCALE,
-                    finalY / BOX_SCALE
-                };
-
-                b2Rot currentRotation =
-                    b2Body_GetRotation(col.body);
-
-                b2Body_SetTransform(
-                    col.body,
-                    newPos,
-                    currentRotation
+            b2Vec2 p1 =
+                b2Body_GetPosition(
+                    c1.body
                 );
 
-                // ----- Update ECS position -----
+            SDL_FRect rect1 = {
 
-                pos.x = finalX;
-                pos.y = finalY;
+                p1.x * BOX_SCALE,
+
+                p1.y * BOX_SCALE,
+
+                d1.size.x,
+
+                d1.size.y
+            };
+
+            if (goldenaxe::overlap(
+                next,
+                rect1))
+            {
+                collided = true;
+                break;
             }
         }
+
+        // apply movement only if no collision
+        if (!collided) {
+
+            b2Vec2 newPos = {
+
+                next.x / BOX_SCALE,
+
+                next.y / BOX_SCALE
+            };
+
+            b2Rot currentRotation =
+                b2Body_GetRotation(
+                    col.body
+                );
+
+            b2Body_SetTransform(
+                col.body,
+                newPos,
+                currentRotation
+            );
+
+            pos.x = next.x;
+            pos.y = next.y;
+        }
     }
+}
 
     bool AI::is_anyone_attacking = false;
     float AI::global_attack_cooldown = 0.0f;
