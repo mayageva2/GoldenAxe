@@ -17,7 +17,7 @@ namespace goldenaxe {
 
         if (!SDL_CreateWindowAndRenderer("Golden Axe", SCREEN_W, SCREEN_H, 0, &win, &ren)) {
             cout << SDL_GetError() << endl;
-            return;
+            return;//
         }
 
         b2WorldDef worldDef = b2DefaultWorldDef();
