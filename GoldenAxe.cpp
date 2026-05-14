@@ -473,6 +473,12 @@ namespace goldenaxe {
                 next.x += mov.vx;
                 next.y += mov.vy;
 
+                if (mov.vx == 0)
+                    next.x = pos.x;
+
+                if (mov.vy == 0)
+                    next.y = pos.y;
+
                 float left =leftBound(currStage,next.y);
                 float right =rightBound(currStage,next.y);
 
@@ -518,14 +524,84 @@ namespace goldenaxe {
                     }
                 }
 
-                if (canmove) {
-                    b2Vec2 newPos = { next.x / BOX_SCALE, next.y / BOX_SCALE };
-                    b2Rot currentRotation = b2Body_GetRotation(col.body);
-                    b2Body_SetTransform(col.body, newPos, currentRotation);
+                float oldX = currentPos.x * BOX_SCALE;
+                float oldY = currentPos.y * BOX_SCALE;
 
-                    pos.x = next.x;
-                    pos.y = next.y;
-                }
+                // ----- X movement test -----
+
+                SDL_FRect testX = next;
+                testX.y = oldY;
+
+                bool canMoveX = true;
+
+                float leftX =
+                    leftBound(currStage, testX.y);
+
+                float rightX =
+                    rightBound(currStage, testX.y);
+
+                if (testX.x < leftX)
+                    canMoveX = false;
+
+                if (testX.x + testX.w > rightX)
+                    canMoveX = false;
+
+                // ----- Y movement test -----
+
+                SDL_FRect testY = next;
+                testY.x = oldX;
+
+                bool canMoveY = true;
+
+                float leftY =
+                    leftBound(currStage, testY.y);
+
+                float rightY =
+                    rightBound(currStage, testY.y);
+
+                if (testY.x < leftY)
+                    canMoveY = false;
+
+                if (testY.x + testY.w > rightY)
+                    canMoveY = false;
+
+                if (testY.y < top)
+                    canMoveY = false;
+
+                if (testY.y + testY.h > bottom)
+                    canMoveY = false;
+
+                // ----- Apply movement separately -----
+
+                float finalX = oldX;
+                float finalY = oldY;
+
+                if (canMoveX)
+                    finalX = testX.x;
+
+                if (canMoveY)
+                    finalY = testY.y;
+
+                // ----- Update physics -----
+
+                b2Vec2 newPos = {
+                    finalX / BOX_SCALE,
+                    finalY / BOX_SCALE
+                };
+
+                b2Rot currentRotation =
+                    b2Body_GetRotation(col.body);
+
+                b2Body_SetTransform(
+                    col.body,
+                    newPos,
+                    currentRotation
+                );
+
+                // ----- Update ECS position -----
+
+                pos.x = finalX;
+                pos.y = finalY;
             }
         }
     }
