@@ -120,11 +120,10 @@ namespace goldenaxe {
     };
 
     inline constexpr SDL_FRect STAGE_FRAMES[] = {
-
-        {   0, 0, 104, 121 }, // Stage 1
-        { 104, 0, 104, 121 }, // Stage 2
-        { 208, 0, 104, 121 }, // Stage 3
-        { 312, 0, 104, 121 }  // Stage 4
+        {0, 0,150, 224}, // Stage 1
+        { 104, 0, 150, 224 }, // Stage 2
+        { 208, 0, 150, 224 }, // Stage 3
+        { 312, 0, 150, 224 }  // Stage 4
     };
 
     inline constexpr StageBounds STAGE_BOUNDS[] = {
@@ -137,12 +136,13 @@ namespace goldenaxe {
         },
 
         // Stage 2
-        {
-            30, 90,
-            120, 175,
-            104, 208
-        },
+  {
+      40,100,   // topY, bottomY
 
+      0,200,    // leftTop, rightTop
+
+      0,430     // leftBottom, rightBottom
+  },
         // Stage 3
         {
             45, 90,
@@ -175,7 +175,7 @@ namespace goldenaxe {
 
         // Stage 1
         {
-            {25,120},
+            {20,120},
             {25,200},
             {400,120},
             {400,200}
@@ -183,10 +183,10 @@ namespace goldenaxe {
 
         // Stage 2
         {
-            {125,45},
-            {140,75},
-            {170,45},
-            {185,75}
+            {50,220},
+            {140,250},
+            {400,300},
+            {500,360}
         },
 
         // Stage 3
@@ -292,18 +292,17 @@ namespace goldenaxe {
 
     class GoldenAxe {
     private:
+
+        //source Picture's definitions
         static constexpr int WIN_W = 416;
         static constexpr int WIN_H = 121;
 
+        //dest Picture's definitions
         static constexpr int SCREEN_W = 800;
         static constexpr int SCREEN_H = 600;
 
-        // static float constexpr upperStartingPosition = WIN_H - 240;
-        // static float constexpr bottomStartingPosition = WIN_H - 120;
-        // static float constexpr leftStartingPosition = 150;
-        // static float constexpr rightStartingPosition = WIN_W - 150;
         static float constexpr speed = 2.0f;
-        static STAGE_INDEX currStage;
+        static STAGE_INDEX currStage; //initialized in ctor
 
         static constexpr int FPS = 60;
         static constexpr Uint64 GAME_FRAME = 1000 / FPS;
@@ -311,10 +310,20 @@ namespace goldenaxe {
         static constexpr float TEX_SCALE = 1.8f;
         static constexpr float BOX_SCALE = 10.0f;
 
-        SDL_FRect stageFrame = {
-            0, 0,
-            150, 224
-        };
+        SDL_FRect stageFrame;
+
+        //for transitioning
+        bool transitioning = false;
+
+        bool battleFinished = false;
+
+        float transitionTargetX = 0.f;
+
+        float cameraSpeed = 1.5f;
+
+        Entity transitionHero = Entity::first();
+
+
 
         SDL_Window* win = nullptr;
         SDL_Renderer* ren = nullptr;
@@ -326,6 +335,8 @@ namespace goldenaxe {
 
         b2WorldId world = b2_nullWorldId;
 
+
+
         void box_system() const;
         void input_system() const;
         void ai_system() const;
@@ -334,7 +345,10 @@ namespace goldenaxe {
         void draw_system() const;
         void animation_system(float deltaTime) const;
         void combat_system(float deltaTime) const;
-        void resetStage();
+        void resetStage(bool spawnHero);
+        void startStageTransition();
+        void transition_system();
+        bool battleOver();
 
         static constexpr Drawable makeDrawable(SDL_FRect part, SDL_Texture* texture);
         static constexpr SDL_FRect colliderRect(const Position& p, const Drawable& d);

@@ -25,6 +25,8 @@ namespace goldenaxe {
         worldDef.gravity = { 0.0f, 0.0f };
         world = b2CreateWorld(&worldDef);
 
+        stageFrame=STAGE_FRAMES[static_cast<int>(currStage)];
+
         if (b2World_IsValid(world) == false) {
             cout << "Failed to create Box2D world" << endl;
             return;
@@ -52,6 +54,114 @@ namespace goldenaxe {
         if (ren) SDL_DestroyRenderer(ren);
         if (win) SDL_DestroyWindow(win);
         SDL_Quit();
+    }
+
+    void GoldenAxe::startStageTransition() {
+
+        if (currStage ==
+            STAGE_INDEX::STAGE4)
+            return;
+        if (transitioning)
+            return;
+
+        transitioning = true;
+
+        transitionTargetX =
+            STAGE_FRAMES[
+                static_cast<int>(currStage) + 1
+            ].x;
+
+        // find hero
+        Mask heroMask =
+            MaskBuilder()
+            .set<Keys>()
+            .build();
+
+        for (Entity e = Entity::first();
+             !e.eof();
+             e.next()) {
+
+            if (e.test(heroMask)) {
+
+                transitionHero = e;
+                break;
+            }
+             }
+    }
+
+    bool GoldenAxe::battleOver() {
+        Mask enemiesalive = MaskBuilder().set<AI>().build();
+
+        for (Entity e = Entity::first(); !e.eof(); e.next()) {
+            if (e.test(enemiesalive))
+                return false;
+        }
+        return true;
+    }
+
+    void GoldenAxe::transition_system() {
+
+        if (!transitioning)
+            return;
+
+        // move camera
+        stageFrame.x += cameraSpeed;
+
+        // auto-walk hero
+        if (!transitionHero.eof()) {
+
+            auto& pos =
+                transitionHero.get<Position>();
+
+            auto& mov =
+                transitionHero.get<Movement>();
+
+            mov.vx = cameraSpeed;
+
+            pos.x += cameraSpeed;
+        }
+
+        // reached next stage
+        if (stageFrame.x >=
+            transitionTargetX) {
+
+            stageFrame.x =
+                transitionTargetX;
+
+            // advance stage
+            currStage =
+                static_cast<STAGE_INDEX>(
+                    static_cast<int>(
+                        currStage
+                    ) + 1
+                );
+
+            // snap hero to spawn
+            const auto& s =
+                SPAWNS[
+                    static_cast<int>(
+                        currStage
+                    )
+                ];
+
+            if (!transitionHero.eof()) {
+
+                auto& pos =
+                    transitionHero.get<Position>();
+
+                auto& mov =
+                    transitionHero.get<Movement>();
+
+                pos.x = s.hero1.x;
+                pos.y = s.hero1.y;
+
+                mov.vx = 0;
+                mov.vy = 0;
+            }
+
+            transitioning = false;
+            resetStage(false);
+            }
     }
 
     ent_type CreateHero(b2WorldId world, float x, float y, SDL_Texture* texture) {
@@ -262,7 +372,8 @@ namespace goldenaxe {
     }
 
     void GoldenAxe::input_system() const {
-        {
+        if (transitioning)
+            return;
             static const Mask mask = MaskBuilder()
                 .set<Keys>()
                 .set<Intent>()
@@ -283,8 +394,6 @@ namespace goldenaxe {
                     i.hit = keys[k.hit];
                 }
             }
-        }
-
     }
 
     void GoldenAxe::move_system() const {
@@ -366,6 +475,15 @@ namespace goldenaxe {
                 if (next.y + next.h > bottom)
                     canmove = false;
 
+                //Log
+                if (!canmove) {
+                    std::cout << "cant move due to out of bounds: " <<pos.x<<","<<pos.y<< std::endl;
+                    std::cout << "left bound: " << left << std::endl;
+                    std::cout << "right bound: " << right << std::endl;
+                    std::cout << "top bound: " << top << std::endl;
+                    std::cout << "bottom bound: " << bottom << std::endl;
+                }
+
 
                 for (Entity e1 = Entity::first(); !e1.eof() && canmove; e1.next()) {
                     if (e1.entity().id == e.entity().id) continue;
@@ -384,6 +502,7 @@ namespace goldenaxe {
 
                         if (goldenaxe::overlap(next, rect1))
                             canmove = false;
+                        std::cout << "cant move due to collision" << std::endl;
                     }
                 }
 
@@ -404,6 +523,8 @@ namespace goldenaxe {
     bool is_player_active = false;
 
     void GoldenAxe::ai_system() const {
+        if (transitioning)
+            return;
         Position heroPos = {0, 0};
         bool heroFound = false;
 
@@ -527,6 +648,8 @@ namespace goldenaxe {
     }
 
     void GoldenAxe::combat_system(float deltaTime) const {
+        if (transitioning)
+            return;
         static const Mask attackerMask = MaskBuilder().set<Intent>().set<Position>().set<Animation>().build();
         static const Mask victimMask = MaskBuilder().set<ChangeLives>().set<Position>().build();
 
@@ -555,16 +678,19 @@ namespace goldenaxe {
         }
     }
 
-    void GoldenAxe::resetStage() {
+    void GoldenAxe::resetStage(bool spawnHero) {
 
-        Mask m =
+        battleFinished = false;
+
+        const auto& s =
+            SPAWNS[
+                static_cast<int>(currStage)
+            ];
+
+       /* Mask m =
             MaskBuilder()
             .set<Movement>()
             .build();
-
-        const auto& s =SPAWNS[
-        static_cast<int>(currStage)
-    ];
 
         for (auto e = Entity::first();
              !e.eof();
@@ -574,44 +700,49 @@ namespace goldenaxe {
                 e.destroy();
              }
 
-        is_player_active = false;
+        is_player_active = false;*/
 
-        // Hero 1
-        ent_type hero =
-            CreateHero(
-                world,
-                s.hero1.x,
-                s.hero1.y,
-                characterstex
+        // Spawn hero only if requested
+        if (spawnHero) {
+
+            ent_type hero =
+                CreateHero(
+                    world,
+                    s.hero1.x,
+                    s.hero1.y,
+                    characterstex
+                );
+
+            World::addComponent(
+                hero,
+                Intent{
+                    false,false,
+                    false,false,
+                    false
+                }
             );
 
-        World::addComponent(
-            hero,
-            Intent{
-                false,false,
-                false,false,
-                false
-            }
-        );
+            World::addComponent(
+                hero,
+                Keys{
+                    SDL_SCANCODE_W,
+                    SDL_SCANCODE_S,
+                    SDL_SCANCODE_D,
+                    SDL_SCANCODE_A,
+                    SDL_SCANCODE_F
+                }
+            );
 
-        World::addComponent(
-            hero,
-            Keys{
-                SDL_SCANCODE_W,
-                SDL_SCANCODE_S,
-                SDL_SCANCODE_D,
-                SDL_SCANCODE_A,
-                SDL_SCANCODE_F
-            }
-        );
-
-        /*// Hero 2
-        CreateHero(
-            world,
-            s.hero2.x,
-            s.hero2.y,
-            characterstex
-        );*/
+            /*
+            // Optional teammate
+            CreateHero(
+                world,
+                s.hero2.x,
+                s.hero2.y,
+                characterstex
+            );
+            */
+        }
 
         // Enemy 1
         CreateEnemy(
@@ -637,7 +768,7 @@ namespace goldenaxe {
     }
 
     void GoldenAxe::run() {
-        resetStage();
+        resetStage(true);
         bool quit = false;
         const float dt = 1.0f / 60.0f;
         SDL_Event event;
@@ -669,7 +800,7 @@ namespace goldenaxe {
                         auto& anim = e.get<Animation>();
                         if (anim.hitTimer <= 0 && anim.lieDeadTimer <= 0) {
                             if (e.has<Keys>()) {
-                                resetStage();
+                                resetStage(true);
                                 break;
                             } else {
                                 e.destroy();
@@ -684,6 +815,12 @@ namespace goldenaxe {
                 }
             }
 
+            if (battleOver() &&!battleFinished) {
+                battleFinished = true;
+                startStageTransition();
+            }
+
+            transition_system();
             move_system();
             draw_system();
             animation_system(dt);
