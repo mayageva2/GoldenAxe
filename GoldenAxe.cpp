@@ -497,14 +497,6 @@ namespace goldenaxe {
                 if (next.y + next.h > bottom)
                     canmove = false;
 
-                //Log
-                if (!canmove) {
-                    std::cout << "cant move due to out of bounds: " <<pos.x<<","<<pos.y<< std::endl;
-                    std::cout << "left bound: " << left << std::endl;
-                    std::cout << "right bound: " << right << std::endl;
-                    std::cout << "top bound: " << top << std::endl;
-                    std::cout << "bottom bound: " << bottom << std::endl;
-                }
 
 
                 for (Entity e1 = Entity::first(); !e1.eof() && canmove; e1.next()) {
@@ -524,7 +516,6 @@ namespace goldenaxe {
 
                         if (goldenaxe::overlap(next, rect1))
                             canmove = false;
-                        std::cout << "cant move due to collision" << std::endl;
                     }
                 }
 
