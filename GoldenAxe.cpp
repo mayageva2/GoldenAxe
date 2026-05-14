@@ -152,8 +152,30 @@ namespace goldenaxe {
                 auto& mov =
                     transitionHero.get<Movement>();
 
-                pos.x = s.hero1.x;
+                float left =leftBound(currStage,s.hero1.y);
+
+                float right =rightBound(currStage,s.hero1.y);
+
+                pos.x =
+    std::clamp(
+        s.hero1.x,
+        left + 10.f,
+        right - 40.f
+    );
+
                 pos.y = s.hero1.y;
+
+                auto& col =
+                    transitionHero.get<Collider>();
+
+                b2Body_SetTransform(
+                    col.body,
+                    {
+                        pos.x / BOX_SCALE,
+                        pos.y / BOX_SCALE
+                    },
+                    b2Body_GetRotation(col.body)
+                );
 
                 mov.vx = 0;
                 mov.vy = 0;

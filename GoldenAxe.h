@@ -137,7 +137,7 @@ namespace goldenaxe {
 
         // Stage 2
   {
-      40,100,   // topY, bottomY
+      40,90,   // topY, bottomY
 
       0,200,    // leftTop, rightTop
 
@@ -183,7 +183,7 @@ namespace goldenaxe {
 
         // Stage 2
         {
-            {50,220},
+            {140,300},
             {140,250},
             {400,300},
             {500,360}
