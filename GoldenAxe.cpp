@@ -31,7 +31,7 @@ namespace goldenaxe {
             return;
         }
 
-        characterstex = IMG_LoadTexture(ren, CHARACTERS_FILE);
+        characterstex = IMG_LoadTexture(ren, CHARACTERS_FILE);//
         enemiestex = IMG_LoadTexture(ren, ENEMIES_FILE);
         flasktex = IMG_LoadTexture(ren, FLASK_FILE);
         santatex = IMG_LoadTexture(ren, SANTA_FILE);
