@@ -8,7 +8,6 @@
 
 #define CHARACTERS_FILE "external/characters.png"
 #define ENEMIES_FILE "external/enemies.png"
-#define FLASK_FILE "external/flask.jpg"
 #define SANTA_FILE "external/santa.png"
 #define STAGE_FILE "external/longstage.jpg"
 
@@ -88,6 +87,7 @@ namespace goldenaxe {
         static bool is_anyone_attacking;
         static float global_attack_cooldown;
         bool is_player_in_range = false;
+        bool lastFacingRight = false;
     };
 
     struct Hit {
@@ -103,6 +103,8 @@ namespace goldenaxe {
     // Events (Tags)
     struct EnemyKilledEvent {};
     struct FlaskCollectedEvent {};
+    struct SantaTag {};
+    struct FlaskTag {};
 
     //Stage indicator
     enum class STAGE_INDEX{STAGE1,STAGE2,STAGE3,STAGE4};
@@ -326,7 +328,8 @@ namespace goldenaxe {
 
         b2WorldId world = b2_nullWorldId;
         int totalKills = 0;
-        static constexpr int KILLS_REQUIRED = 10;
+        bool santaSpawned = false;
+        static constexpr int KILLS_REQUIRED = 2;
         bool waveInProgress = true;
 
         void box_system() const;
@@ -338,6 +341,7 @@ namespace goldenaxe {
         void animation_system(float deltaTime) const;
         void combat_system(float deltaTime) const;
         void resetStage();
+        void gameplay_system(float dt);
 
         static constexpr Drawable makeDrawable(SDL_FRect part, SDL_Texture* texture);
         static constexpr SDL_FRect colliderRect(const Position& p, const Drawable& d);
@@ -347,6 +351,7 @@ namespace goldenaxe {
     public:
         GoldenAxe();
         ~GoldenAxe();
+        static STAGE_INDEX getCurrStage() { return currStage; }
         void run();
     };
 
@@ -354,7 +359,8 @@ namespace goldenaxe {
 
     static ent_type CreateHero(b2WorldId world, float x, float y, SDL_Texture* texture);
     static ent_type CreateEnemy(b2WorldId world, float x, float y, float w, float h, int frames, SDL_Texture* texture);
-    static ent_type CreateSanta(b2WorldId world, float x, float y);
+    static ent_type CreateSanta(b2WorldId world, float x, float y, SDL_Texture* texture);
+    static ent_type CreateFlask(b2WorldId world, float x, float y, SDL_Texture* texture);
 
     // --- Specialized Systems ---
 
@@ -389,4 +395,11 @@ template <> struct bagel::Storage<goldenaxe::ChangeLives> final : bagel::NoInsta
 
 template <> struct bagel::Storage<goldenaxe::Score> final : bagel::NoInstance {
     using type = bagel::PackedStorage<goldenaxe::Score>;
+};
+
+template <> struct bagel::Storage<goldenaxe::SantaTag> final : bagel::NoInstance {
+    using type = bagel::PackedStorage<goldenaxe::SantaTag>;
+};
+template <> struct bagel::Storage<goldenaxe::FlaskTag> final : bagel::NoInstance {
+    using type = bagel::PackedStorage<goldenaxe::FlaskTag>;
 };
