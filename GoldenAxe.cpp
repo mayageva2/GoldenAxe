@@ -13,8 +13,7 @@ namespace goldenaxe {
 
         if (!SDL_Init(SDL_INIT_VIDEO)) {
             cout << SDL_GetError() << endl;
-            return;
-        }
+            return;        }
 
         if (!SDL_CreateWindowAndRenderer("Golden Axe", SCREEN_W, SCREEN_H, 0, &win, &ren)) {
             cout << SDL_GetError() << endl;
