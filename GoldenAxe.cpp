@@ -54,6 +54,10 @@ namespace goldenaxe {
         SDL_Quit();
     }
 
+    bool AI::is_anyone_attacking = false;
+    float AI::global_attack_cooldown = 0.0f;
+    bool is_player_active = false;
+
     ent_type CreateHero(b2WorldId world, float x, float y, SDL_Texture* texture) {
         ent_type hero = World::createEntity();
 
@@ -79,8 +83,9 @@ namespace goldenaxe {
             0, 345, 43, 65, 6,
             0, 485, 40, 55, 5,
             42, 20.0f, false, 0.0f});
-        World::addComponent(hero, ChangeLives{3, 1});
+        World::addComponent(hero, ChangeLives{3, 1, 0.0f});
         World::addComponent(hero, Score{0});
+        World::addComponent(hero, FlaskUsage{0, 5, false, 0.0f});
 
         return hero;
     }
@@ -256,6 +261,17 @@ namespace goldenaxe {
                 SDL_RenderTextureRotated(ren, d.texture, &d.part, &dest, 0, nullptr, flip);
             }
         }
+
+        for (Entity h = Entity::first(); !h.eof(); h.next()) {
+            if (h.has<FlaskUsage>() && h.get<FlaskUsage>().magic_active) {
+                auto& usage = h.get<FlaskUsage>();
+                SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+                Uint8 alpha = 100 + (Uint8)(55.0f * sinf(usage.magic_timer * 20.0f));
+                SDL_SetRenderDrawColor(ren, 255, 69, 0, alpha);
+                SDL_FRect screenRect = {0, 0, SCREEN_W, SCREEN_H};
+                SDL_RenderFillRect(ren, &screenRect);
+            }
+        }
         SDL_RenderPresent(ren);
     }
 
@@ -324,29 +340,31 @@ namespace goldenaxe {
     }
 
     void GoldenAxe::input_system() const {
-        {
-            static const Mask mask = MaskBuilder()
-                .set<Keys>()
-                .set<Intent>()
-                .build();
+        static const Mask mask = MaskBuilder()
+            .set<Keys>()
+            .set<Intent>()
+            .build();
 
-            SDL_PumpEvents();
-            const bool* keys = SDL_GetKeyboardState(nullptr);
+        SDL_PumpEvents();
+        const bool* keys = SDL_GetKeyboardState(nullptr);
 
-            for (Entity e = Entity::first(); !e.eof(); e.next()) {
-                if (e.test(mask)) {
-                    const auto& k = e.get<Keys>();
-                    auto& i = e.get<Intent>();
+        for (Entity e = Entity::first(); !e.eof(); e.next()) {
+            if (e.test(mask)) {
+                const auto& k = e.get<Keys>();
+                auto& i = e.get<Intent>();
 
-                    i.up = keys[k.up];
-                    i.down = keys[k.down];
-                    i.left = keys[k.left];
-                    i.right = keys[k.right];
-                    i.hit = keys[k.hit];
+                i.up = keys[k.up];
+                i.down = keys[k.down];
+                i.left = keys[k.left];
+                i.right = keys[k.right];
+                i.hit = keys[k.hit];
+                i.magic = keys[k.magic];
+
+                if (i.up || i.down || i.left || i.right || i.hit || i.magic) {
+                    is_player_active = true;
                 }
             }
         }
-
     }
 
     void GoldenAxe::move_system() const {
@@ -445,145 +463,134 @@ namespace goldenaxe {
         }
     }
 
-    bool AI::is_anyone_attacking = false;
-    float AI::global_attack_cooldown = 0.0f;
-    bool is_player_active = false;
-
     void GoldenAxe::ai_system() const {
-        Position heroPos = { 0, 0 };
-        bool heroFound = false;
+    Position heroPos = { 0, 0 };
+    bool heroFound = false;
 
-        for (Entity e = Entity::first(); !e.eof(); e.next()) {
-            if (e.test(MaskBuilder().set<Keys>().set<Position>().set<Movement>().build())) {
-                heroPos = e.get<Position>();
-                heroFound = true;
-                const auto& mov = e.get<Movement>();
-                if (abs(mov.vx) > 0.1f || abs(mov.vy) > 0.1f) is_player_active = true;
-                break;
-            }
+    for (Entity h = Entity::first(); !h.eof(); h.next()) {
+        if (h.has<FlaskUsage>() && h.get<FlaskUsage>().magic_active) return;
+
+        if (h.test(MaskBuilder().set<Keys>().set<Position>().build())) {
+            heroPos = h.get<Position>();
+            heroFound = true;
         }
+    }
 
-        if (!heroFound || !is_player_active) return;
+    if (!heroFound || !is_player_active) return;
 
-        float deltaTime = 1.0f / 60.0f;
-        if (AI::global_attack_cooldown > 0) AI::global_attack_cooldown -= deltaTime;
+    float deltaTime = 1.0f / 60.0f;
+    if (AI::global_attack_cooldown > 0) AI::global_attack_cooldown -= deltaTime;
 
-        AI::is_anyone_attacking = false;
-        Mask aiMask = MaskBuilder().set<AI>().set<Intent>().set<Position>().build();
+    AI::is_anyone_attacking = false;
+    Mask aiMask = MaskBuilder().set<AI>().set<Intent>().set<Position>().build();
 
-        b2SensorEvents sensorEvents = b2World_GetSensorEvents(world);
-        for (int i = 0; i < sensorEvents.beginCount; ++i) {
-            b2SensorBeginTouchEvent event = sensorEvents.beginEvents[i];
-            id_type enemyId = (id_type)(uintptr_t)b2Body_GetUserData(b2Shape_GetBody(event.sensorShapeId));
-            id_type visitorId = (id_type)(uintptr_t)b2Body_GetUserData(b2Shape_GetBody(event.visitorShapeId));
-            Entity enemyEnt = Entity{ {enemyId} };
-            Entity visitorEnt = Entity{ {visitorId} };
-            if (visitorEnt.test(MaskBuilder().set<Keys>().build()) && enemyEnt.test(MaskBuilder().set<AI>().build())) {
-                enemyEnt.get<AI>().is_player_in_range = true;
-            }
+    b2SensorEvents sensorEvents = b2World_GetSensorEvents(world);
+    for (int i = 0; i < sensorEvents.beginCount; ++i) {
+        b2SensorBeginTouchEvent event = sensorEvents.beginEvents[i];
+        id_type enemyId = (id_type)(uintptr_t)b2Body_GetUserData(b2Shape_GetBody(event.sensorShapeId));
+        Entity enemyEnt = Entity{ {enemyId} };
+        if (enemyEnt.test(MaskBuilder().set<AI>().build())) {
+            enemyEnt.get<AI>().is_player_in_range = true;
         }
-        for (int i = 0; i < sensorEvents.endCount; ++i) {
-            b2SensorEndTouchEvent event = sensorEvents.endEvents[i];
-            id_type enemyId = (id_type)(uintptr_t)b2Body_GetUserData(b2Shape_GetBody(event.sensorShapeId));
-            id_type visitorId = (id_type)(uintptr_t)b2Body_GetUserData(b2Shape_GetBody(event.visitorShapeId));
-            Entity enemyEnt = Entity{ {enemyId} };
-            Entity visitorEnt = Entity{ {visitorId} };
-            if (visitorEnt.test(MaskBuilder().set<Keys>().build()) && enemyEnt.test(MaskBuilder().set<AI>().build())) {
-                enemyEnt.get<AI>().is_player_in_range = false;
-            }
+    }
+    for (int i = 0; i < sensorEvents.endCount; ++i) {
+        b2SensorEndTouchEvent event = sensorEvents.endEvents[i];
+        id_type enemyId = (id_type)(uintptr_t)b2Body_GetUserData(b2Shape_GetBody(event.sensorShapeId));
+        Entity enemyEnt = Entity{ {enemyId} };
+        if (enemyEnt.test(MaskBuilder().set<AI>().build())) {
+            enemyEnt.get<AI>().is_player_in_range = false;
         }
+    }
 
-        for (Entity e = Entity::first(); !e.eof(); e.next()) {
-            if (e.test(aiMask)) {
-                auto& ai = e.get<AI>();
-                auto& intent = e.get<Intent>();
-                auto& pos = e.get<Position>();
+    for (Entity e = Entity::first(); !e.eof(); e.next()) {
+        if (e.test(aiMask)) {
+            auto& ai = e.get<AI>();
+            auto& intent = e.get<Intent>();
+            auto& pos = e.get<Position>();
 
-                intent.left = intent.right = intent.up = intent.down = intent.hit = false;
-                float dx = heroPos.x - pos.x;
-                float dy = heroPos.y - pos.y;
+            intent.left = intent.right = intent.up = intent.down = intent.hit = false;
 
-                if (ai.type == AIType::RUNNER) {
-                    ai.timer -= deltaTime;
+            float dx = heroPos.x - pos.x;
+            float dy = heroPos.y - pos.y;
 
-                    switch (ai.state) {
-                        case AIState::APPROACH:
-                            intent.left = intent.right = intent.up = intent.down = false;
-
-                            if (ai.timer <= 0 || ai.is_player_in_range) {
-                                ai.state = AIState::COOLDOWN;
-                                ai.timer = 2.0f + (rand() % 3);
-
-                                float centerX = SCREEN_W / 2.0f;
-                                ai.lastFacingRight = (pos.x < centerX);
-                            }
-                            break;
-
-                        case AIState::COOLDOWN:
-                            float lb = leftBound(GoldenAxe::getCurrStage(), pos.y);
-                            float rb = rightBound(GoldenAxe::getCurrStage(), pos.y);
-
-                            if (pos.x < lb + 20) ai.lastFacingRight = true;
-                            if (pos.x > rb - 50) ai.lastFacingRight = false;
-
-                            intent.right = ai.lastFacingRight;
-                            intent.left = !ai.lastFacingRight;
-                            intent.up = (fmod(ai.timer, 2.0f) > 1.0f);
-                            intent.down = !intent.up;
-
-                            if (ai.is_player_in_range) {
-                                ai.timer += deltaTime;
-                            }
-
-                            if (ai.timer <= 0) {
-                                ai.state = AIState::APPROACH;
-                                ai.timer = 1.0f + (rand() % 2);
-                            }
-                            break;
-                    }
-                    continue;
-                }
-
+            if (ai.type == AIType::RUNNER) {
+                ai.timer -= deltaTime;
                 switch (ai.state) {
+                    case AIState::APPROACH:
+                        if (ai.timer <= 0 || ai.is_player_in_range) {
+                            ai.state = AIState::COOLDOWN;
+                            ai.timer = 2.0f + (rand() % 3);
+                            ai.lastFacingRight = (pos.x < (SCREEN_W / 2.0f));
+                        }
+                        break;
+                    case AIState::COOLDOWN:
+                        float lb = leftBound(GoldenAxe::getCurrStage(), pos.y);
+                        float rb = rightBound(GoldenAxe::getCurrStage(), pos.y);
+                        if (pos.x < lb + 20) ai.lastFacingRight = true;
+                        if (pos.x > rb - 50) ai.lastFacingRight = false;
+
+                        intent.right = ai.lastFacingRight;
+                        intent.left = !ai.lastFacingRight;
+                        intent.up = (fmod(ai.timer, 2.0f) > 1.0f);
+                        intent.down = !intent.up;
+
+                        if (ai.timer <= 0) {
+                            ai.state = AIState::APPROACH;
+                            ai.timer = 1.0f + (rand() % 2);
+                        }
+                        break;
+                }
+                continue;
+            }
+
+            switch (ai.state) {
                 case AIState::APPROACH:
-                    if (ai.is_player_in_range) {
-                        if (!AI::is_anyone_attacking && AI::global_attack_cooldown <= 0) {
-                            ai.state = AIState::ATTACK;
-                            ai.timer = 0.6f;
-                            AI::global_attack_cooldown = 1.5f;
-                        }
-                        else {
-                            ai.state = AIState::WAIT;
-                            ai.timer = 0.5f + (rand() % 100 / 100.0f);
-                        }
+                    if (abs(dy) > 10) {
+                        if (dy > 0) intent.down = true; else intent.up = true;
                     }
-                    else {
-                        if (abs(dy) > 10) { if (dy > 0) intent.down = true; else intent.up = true; }
-                        if (abs(dy) < 30) { if (dx > 20) intent.right = true; else if (dx < -20) intent.left = true; }
+
+                    if (abs(dy) < 25) {
+                        if (abs(dx) > 65) {
+                            if (dx > 0) intent.right = true; else intent.left = true;
+                        } else {
+                            if (!AI::is_anyone_attacking && AI::global_attack_cooldown <= 0) {
+                                ai.state = AIState::ATTACK;
+                                ai.timer = 0.6f;
+                                AI::global_attack_cooldown = 1.2f;
+                            } else {
+                                ai.state = AIState::WAIT;
+                                ai.timer = 0.5f + (rand() % 50 / 100.0f);
+                            }
+                        }
                     }
                     break;
 
                 case AIState::WAIT:
                     ai.timer -= deltaTime;
-                    if (abs(dy) < 40) { if (pos.y > heroPos.y) intent.down = true; else intent.up = true; }
+                    if (abs(dy) < 40) { if (dy > 0) intent.up = true; else intent.down = true; }
                     if (ai.timer <= 0) ai.state = AIState::APPROACH;
                     break;
 
                 case AIState::ATTACK:
                     intent.hit = true;
                     ai.timer -= deltaTime;
-                    if (ai.timer <= 0) { ai.state = AIState::COOLDOWN; ai.timer = 0.8f; }
+                    if (ai.timer <= 0) {
+                        ai.state = AIState::COOLDOWN;
+                        ai.timer = 0.8f;
+                    }
                     break;
 
                 case AIState::COOLDOWN:
                     ai.timer -= deltaTime;
-                    if (abs(dx) < 80) { if (dx > 0) intent.left = true; else intent.right = true; }
+                    if (abs(dx) < 100) {
+                        if (dx > 0) intent.left = true; else intent.right = true;
+                    }
                     if (ai.timer <= 0) ai.state = AIState::APPROACH;
                     break;
-                }
             }
         }
     }
+}
 
     void GoldenAxe::combat_system(float deltaTime) const {
         static const Mask attackerMask = MaskBuilder().set<Intent>().set<Position>().set<Animation>().build();
@@ -605,11 +612,50 @@ namespace goldenaxe {
                         auto& vLife = victim.get<ChangeLives>();
                         if (vLife.invulnTimer <= 0) {
                             vLife.lives -= 1;
-                            vLife.invulnTimer = 0.8f;
+                            vLife.invulnTimer = 1.5f;
                             if (victim.has<Animation>()) victim.get<Animation>().hitTimer = 0.5f;
+
+                            if (victim.has<SantaTag>()) {
+                                Position p = victim.get<Position>();
+                                CreateFlask(world, p.x, p.y + 20, flasktex);
+                            }
                         }
                     }
                 }
+            }
+        }
+    }
+
+    void GoldenAxe::magic_system(float dt) const {
+        static const Mask heroMagicMask = MaskBuilder().set<FlaskUsage>().set<Intent>().build();
+        static const Mask enemyMask = MaskBuilder().set<ChangeLives>().build();
+
+        for (Entity h = Entity::first(); !h.eof(); h.next()) {
+            if (!h.test(heroMagicMask)) continue;
+
+            auto& usage = h.get<FlaskUsage>();
+            auto& intent = h.get<Intent>();
+
+            if (intent.magic && usage.current_flasks >= usage.goal && !usage.magic_active) {
+                usage.magic_active = true;
+                usage.magic_timer = 2.0f;
+                usage.current_flasks = 0;
+                cout << "FIRE MAGIC ACTIVATED!" << endl;
+
+                for (Entity e = Entity::first(); !e.eof(); e.next()) {
+                    if (e.test(enemyMask) && !e.has<Keys>() && !e.has<SantaTag>()) {
+                        auto& lives = e.get<ChangeLives>();
+                        lives.lives = 0;
+                        if (e.has<Animation>()) {
+                            e.get<Animation>().hitTimer = 1.0f;
+                        }
+                    }
+                }
+            }
+
+            if (usage.magic_active) {
+                usage.magic_timer -= dt;
+                if (usage.magic_timer <= 0) usage.magic_active = false;
             }
         }
     }
@@ -634,6 +680,7 @@ namespace goldenaxe {
         totalKills = 0;
         santaSpawned = false;
         is_player_active = false;
+        spawnTimer = 5.0f;
 
         // Hero 1
         ent_type hero =
@@ -660,7 +707,8 @@ namespace goldenaxe {
                 SDL_SCANCODE_S,
                 SDL_SCANCODE_D,
                 SDL_SCANCODE_A,
-                SDL_SCANCODE_F
+                SDL_SCANCODE_F,
+                SDL_SCANCODE_G
             }
         );
 
@@ -696,81 +744,93 @@ namespace goldenaxe {
     }
 
     void GoldenAxe::gameplay_system(float dt) {
-    bool enemyFound = false;
+        bool heroActive = false;
+        int liveEnemies = 0;
 
-    for (Entity h = Entity::first(); !h.eof(); h.next()) {
-        if (h.has<Keys>() && h.has<Position>()) {
-            const auto& hPos = h.get<Position>();
-            const auto& hIntent = h.get<Intent>();
+        for (Entity h = Entity::first(); !h.eof(); h.next()) {
+            if (h.has<Keys>() && h.has<Position>() && h.has<Intent>()) {
+                heroActive = true;
+                const auto& hPos = h.get<Position>();
+                const auto& hIntent = h.get<Intent>();
 
-            for (Entity f = Entity::first(); !f.eof(); f.next()) {
-                if (f.has<FlaskTag>()) {
-                    const auto& fPos = f.get<Position>();
-                    if (abs(hPos.x - fPos.x) < 40 && abs(hPos.y - fPos.y) < 40) {
-                        if (hIntent.hit) {
-                            f.destroy();
-                            cout << "Flask Collected!" << endl;
+                for (Entity f = Entity::first(); !f.eof(); f.next()) {
+                    if (f.has<FlaskTag>()) {
+                        const auto& fPos = f.get<Position>();
+                        if (abs(hPos.x - fPos.x) < 40 && abs(hPos.y - fPos.y) < 40) {
+                            if (hIntent.hit) {
+                                f.destroy();
+                                if (h.has<FlaskUsage>()) {
+                                    h.get<FlaskUsage>().current_flasks++;
+                                }
+                                cout << "Flask Collected! Total: " << h.get<FlaskUsage>().current_flasks << endl;
+                            }
                         }
                     }
                 }
             }
         }
-    }
 
-    for (Entity e = Entity::first(); !e.eof(); ) {
-        bool destroyed = false;
-        if (e.has<Animation>()) {
-            auto& anim = e.get<Animation>();
-            if (anim.hitTimer > 0) anim.hitTimer -= dt;
-            if (anim.lieDeadTimer > 0 && (!e.has<ChangeLives>() || e.get<ChangeLives>().lives <= 0)) {
-                anim.lieDeadTimer -= dt;
-            }
-        }
+        for (Entity e = Entity::first(); !e.eof(); ) {
+            bool destroyed = false;
 
-        if (e.has<ChangeLives>()) {
-            auto& cl = e.get<ChangeLives>();
-            if (cl.invulnTimer > 0) cl.invulnTimer -= dt;
-
-            if (!e.has<Keys>() && cl.lives > 0) {
-                enemyFound = true;
+            if (e.has<Animation>()) {
+                auto& anim = e.get<Animation>();
+                if (anim.hitTimer > 0) anim.hitTimer -= dt;
+                if (anim.lieDeadTimer > 0 && (!e.has<ChangeLives>() || e.get<ChangeLives>().lives <= 0)) {
+                    anim.lieDeadTimer -= dt;
+                }
             }
 
-            if (cl.lives <= 0) {
-                bool canRemove = true;
-                if (e.has<Animation>()) {
-                    auto& anim = e.get<Animation>();
-                    if (anim.hitTimer > 0 || anim.lieDeadTimer > 0) canRemove = false;
+            if (e.has<ChangeLives>()) {
+                auto& cl = e.get<ChangeLives>();
+                if (cl.invulnTimer > 0) cl.invulnTimer -= dt;
+
+                if (!e.has<Keys>() && cl.lives > 0 && !e.has<SantaTag>()) {
+                    liveEnemies++;
                 }
 
-                if (canRemove) {
-                    if (e.has<Keys>()) {
-                        cout << "HERO DIED." << endl;
-                        resetStage(); return;
-                    } else {
-                        if (e.has<SantaTag>()) {
-                            Position p = e.get<Position>();
-                            CreateFlask(world, p.x, p.y, flasktex);
-                            cout << "Santa dropped a flask!" << endl;
+                if (cl.lives <= 0) {
+                    bool canRemove = true;
+                    if (e.has<Animation>()) {
+                        auto& anim = e.get<Animation>();
+                        if (anim.hitTimer > 0 || anim.lieDeadTimer > 0) canRemove = false;
+                    }
 
-                            santaSpawned = true;
+                    if (canRemove) {
+                        if (e.has<Keys>()) {
+                            cout << "HERO DIED." << endl;
+                            resetStage();
+                            return;
+                        } else {
+                            if (e.has<SantaTag>()) {
+                                Position p = e.get<Position>();
+                                CreateFlask(world, p.x, p.y, flasktex);
+                            }
+
+                            e.destroy();
+                            destroyed = true;
+                            totalKills++;
+
+                            if (rand() % 100 < 30 && totalKills < KILLS_REQUIRED) {
+                                auto& b = STAGE_BOUNDS[static_cast<int>(currStage)];
+                                float y = (b.topY * SCALE_Y) + (rand() % (int)((b.bottomY - b.topY) * SCALE_Y));
+                                CreateSanta(world, -50, y, santatex);
+                            }
                         }
-                        e.destroy();
-                        destroyed = true;
-                        totalKills++;
                     }
                 }
             }
+            if (!destroyed) e.next();
         }
-        if (!destroyed) e.next();
-    }
 
-    if (!enemyFound) {
-        if (totalKills < KILLS_REQUIRED) {
+        if (spawnTimer > 0) spawnTimer -= dt;
+        if (totalKills + liveEnemies < KILLS_REQUIRED && liveEnemies < 2 && spawnTimer <= 0) {
             auto& b = STAGE_BOUNDS[static_cast<int>(currStage)];
             float y = (b.topY * SCALE_Y) + (rand() % (int)((b.bottomY - b.topY) * SCALE_Y));
             CreateEnemy(world, rightBound(currStage, y) - 60, y, 55, 70, 4, enemiestex);
+            spawnTimer = 2.0f;
         }
-        else if (!santaSpawned) {
+        else if (totalKills >= KILLS_REQUIRED && liveEnemies == 0 && !santaSpawned) {
             auto& b = STAGE_BOUNDS[static_cast<int>(currStage)];
             float floorY = 320.0f;
             float startX = leftBound(currStage, floorY) - 50.0f;
@@ -781,10 +841,9 @@ namespace goldenaxe {
             ai.timer = 3.0f;
 
             santaSpawned = true;
-            cout << "VICTORY! Santa is entering from the left!" << endl;
+            cout << "STAGE CLEAR! Bonus thief appeared!" << endl;
         }
     }
-}
 
     void GoldenAxe::run() {
         resetStage();
@@ -801,6 +860,7 @@ namespace goldenaxe {
             input_system();
             ai_system();
             combat_system(dt);
+            magic_system(dt);
             gameplay_system(dt);
             move_system();
             animation_system(dt);

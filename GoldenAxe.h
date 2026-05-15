@@ -31,11 +31,11 @@ namespace goldenaxe {
     };
 
     struct Keys {
-        SDL_Scancode up, down, right, left, hit;
+        SDL_Scancode up, down, right, left, hit, magic;
     };
 
     struct Intent {
-        bool up, down, right, left, hit;
+        bool up, down, right, left, hit, magic;
     };
 
     struct Drawable {
@@ -98,6 +98,8 @@ namespace goldenaxe {
     struct FlaskUsage {
         int current_flasks = 0;
         int goal = 5;
+        bool magic_active = false;
+        float magic_timer = 0.0f;
     };
 
     // Events (Tags)
@@ -329,8 +331,9 @@ namespace goldenaxe {
         b2WorldId world = b2_nullWorldId;
         int totalKills = 0;
         bool santaSpawned = false;
-        static constexpr int KILLS_REQUIRED = 2;
+        static constexpr int KILLS_REQUIRED = 6;
         bool waveInProgress = true;
+        float spawnTimer = 0.0f;
 
         void box_system() const;
         void input_system() const;
@@ -340,6 +343,7 @@ namespace goldenaxe {
         void draw_system() const;
         void animation_system(float deltaTime) const;
         void combat_system(float deltaTime) const;
+        void magic_system(float dt) const;
         void resetStage();
         void gameplay_system(float dt);
 
@@ -400,6 +404,11 @@ template <> struct bagel::Storage<goldenaxe::Score> final : bagel::NoInstance {
 template <> struct bagel::Storage<goldenaxe::SantaTag> final : bagel::NoInstance {
     using type = bagel::PackedStorage<goldenaxe::SantaTag>;
 };
+
 template <> struct bagel::Storage<goldenaxe::FlaskTag> final : bagel::NoInstance {
     using type = bagel::PackedStorage<goldenaxe::FlaskTag>;
+};
+
+template <> struct bagel::Storage<goldenaxe::FlaskUsage> final : bagel::NoInstance {
+    using type = bagel::PackedStorage<goldenaxe::FlaskUsage>;
 };
