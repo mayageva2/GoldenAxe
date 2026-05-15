@@ -9,6 +9,7 @@
 #define CHARACTERS_FILE "external/characters.png"
 #define ENEMIES_FILE "external/enemies.png"
 #define SANTA_FILE "external/santa.png"
+#define FIRE_FILE "external/fire.png"
 #define STAGE_FILE "external/longstage.jpg"
 
 using namespace bagel;
@@ -107,6 +108,7 @@ namespace goldenaxe {
     struct FlaskCollectedEvent {};
     struct SantaTag {};
     struct FlaskTag {};
+    struct FireMagicTag {};
 
     //Stage indicator
     enum class STAGE_INDEX{STAGE1,STAGE2,STAGE3,STAGE4};
@@ -326,6 +328,7 @@ namespace goldenaxe {
         SDL_Texture* enemiestex = nullptr;
         SDL_Texture* flasktex = nullptr;
         SDL_Texture* santatex = nullptr;
+        SDL_Texture* firetex = nullptr;
         SDL_Texture* stagetex = nullptr;
 
         b2WorldId world = b2_nullWorldId;
@@ -411,4 +414,8 @@ template <> struct bagel::Storage<goldenaxe::FlaskTag> final : bagel::NoInstance
 
 template <> struct bagel::Storage<goldenaxe::FlaskUsage> final : bagel::NoInstance {
     using type = bagel::PackedStorage<goldenaxe::FlaskUsage>;
+};
+
+template <> struct bagel::Storage<goldenaxe::FireMagicTag> final : bagel::NoInstance {
+    using type = bagel::PackedStorage<goldenaxe::FireMagicTag>;
 };

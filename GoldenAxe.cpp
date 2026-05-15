@@ -34,6 +34,7 @@ namespace goldenaxe {
         enemiestex = IMG_LoadTexture(ren, ENEMIES_FILE);
         flasktex = IMG_LoadTexture(ren, SANTA_FILE);
         santatex = IMG_LoadTexture(ren, SANTA_FILE);
+        firetex = IMG_LoadTexture(ren, FIRE_FILE);
         stagetex = IMG_LoadTexture(ren, STAGE_FILE);
 
         if (!stagetex) cout << "Warning: Could not load textures. Check external folder!" << endl;
@@ -48,6 +49,7 @@ namespace goldenaxe {
         if (enemiestex) SDL_DestroyTexture(enemiestex);
         if (flasktex) SDL_DestroyTexture(flasktex);
         if (santatex) SDL_DestroyTexture(santatex);
+        if (firetex) SDL_DestroyTexture(firetex);
         if (stagetex) SDL_DestroyTexture(stagetex);
         if (ren) SDL_DestroyRenderer(ren);
         if (win) SDL_DestroyWindow(win);
@@ -186,6 +188,26 @@ namespace goldenaxe {
         World::addComponent(flask, Drawable{ sourceRect, displaySize, texture });
         World::addComponent(flask, FlaskTag{});
         return flask;
+    }
+
+    ent_type CreateFireEffect(float x, float y, SDL_Texture* tex) {
+        ent_type fire = World::createEntity();
+        World::addComponent(fire, Position{ x, y });
+        World::addComponent(fire, Movement{ 4.0f, 8.0f });
+        World::addComponent(fire, Animation{
+            4, 0, 0.08f, 0.0f,
+            150, 257, 10, 10,
+            150, 257, 10, 10,
+            0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,
+            10.0f, 0.0f, true, 0.0f
+        });
+
+        SDL_FPoint scaledSize = { 10.0f * 2.1f, 10.0f * 2.1f };
+        World::addComponent(fire, Drawable{ {150, 257, 10, 10}, scaledSize, tex });
+        World::addComponent(fire, FireMagicTag{});
+
+        return fire;
     }
 
     constexpr Drawable GoldenAxe::makeDrawable(SDL_FRect part, SDL_Texture* texture) {
@@ -629,6 +651,7 @@ namespace goldenaxe {
     void GoldenAxe::magic_system(float dt) const {
         static const Mask heroMagicMask = MaskBuilder().set<FlaskUsage>().set<Intent>().build();
         static const Mask enemyMask = MaskBuilder().set<ChangeLives>().build();
+        static float fireSpawnTimer = 0.0f;
 
         for (Entity h = Entity::first(); !h.eof(); h.next()) {
             if (!h.test(heroMagicMask)) continue;
@@ -638,25 +661,53 @@ namespace goldenaxe {
 
             if (intent.magic && usage.current_flasks >= usage.goal && !usage.magic_active) {
                 usage.magic_active = true;
-                usage.magic_timer = 2.0f;
+                usage.magic_timer = 2.5f;
                 usage.current_flasks = 0;
-                cout << "FIRE MAGIC ACTIVATED!" << endl;
-
-                for (Entity e = Entity::first(); !e.eof(); e.next()) {
-                    if (e.test(enemyMask) && !e.has<Keys>() && !e.has<SantaTag>()) {
-                        auto& lives = e.get<ChangeLives>();
-                        lives.lives = 0;
-                        if (e.has<Animation>()) {
-                            e.get<Animation>().hitTimer = 1.0f;
-                        }
-                    }
-                }
+                fireSpawnTimer = 0.0f;
+                cout << "METEOR STORM ACTIVATED!" << endl;
             }
 
             if (usage.magic_active) {
                 usage.magic_timer -= dt;
+                fireSpawnTimer -= dt;
+
+                if (fireSpawnTimer <= 0) {
+                    float randomX = (float)(rand() % (SCREEN_W + 400)) - 200.0f;
+                    CreateFireEffect(randomX, -100.0f, firetex);
+                    fireSpawnTimer = 0.12f;
+                }
+
+                if (usage.magic_timer <= 0.5f) {
+                    for (Entity e = Entity::first(); !e.eof(); e.next()) {
+                        if (e.test(enemyMask) && !e.has<Keys>() && !e.has<SantaTag>()) {
+                            auto& lives = e.get<ChangeLives>();
+                            lives.lives = 0;
+                            if (e.has<Animation>()) {
+                                e.get<Animation>().hitTimer = 1.0f;
+                            }
+                        }
+                    }
+                }
+
                 if (usage.magic_timer <= 0) usage.magic_active = false;
             }
+        }
+
+        for (Entity f = Entity::first(); !f.eof(); ) {
+            bool destroyed = false;
+            if (f.has<FireMagicTag>()) {
+                auto& pos = f.get<Position>();
+                auto& mov = f.get<Movement>();
+
+                pos.x += mov.vx;
+                pos.y += mov.vy;
+
+                if (pos.y > SCREEN_H + 100 || pos.x > SCREEN_W + 100) {
+                    f.destroy();
+                    destroyed = true;
+                }
+            }
+            if (!destroyed) f.next();
         }
     }
 
