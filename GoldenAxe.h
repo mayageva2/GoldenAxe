@@ -11,6 +11,7 @@
 #define SANTA_FILE "external/santa.png"
 #define FIRE_FILE "external/fire.png"
 #define STAGE_FILE "external/longstage.jpg"
+#define FONTS_FILE "external/fonts.png"
 
 using namespace bagel;
 
@@ -126,11 +127,10 @@ namespace goldenaxe {
     };
 
     inline constexpr SDL_FRect STAGE_FRAMES[] = {
-
-        {   0, 0, 104, 121 }, // Stage 1
-        { 104, 0, 104, 121 }, // Stage 2
-        { 208, 0, 104, 121 }, // Stage 3
-        { 312, 0, 104, 121 }  // Stage 4
+        {0, 0,150, 224}, // Stage 1
+        { 104, 0, 150, 224 }, // Stage 2
+        { 208, 0, 150, 224 }, // Stage 3
+        { 312, 0, 150, 224 }  // Stage 4
     };
 
     inline constexpr StageBounds STAGE_BOUNDS[] = {
@@ -143,24 +143,27 @@ namespace goldenaxe {
         },
 
         // Stage 2
-        {
-            30, 90,
-            120, 175,
-            104, 208
-        },
+  {
+      40,90,   // topY, bottomY
 
+      0,200,    // leftTop, rightTop
+
+      0,430     // leftBottom, rightBottom
+  },
         // Stage 3
-        {
-            45, 90,
-            220, 295,
-            208, 312
-        },
+{
+    60, 95,
+
+    20, 400,
+
+    0, 400
+},
 
         // Stage 4
         {
-            35, 85,
-            325, 395,
-            312, 416
+            40, 95,
+            20, 400,
+            0, 406
         }
     };
 
@@ -181,7 +184,7 @@ namespace goldenaxe {
 
         // Stage 1
         {
-            {25,120},
+            {20,120},
             {25,200},
             {400,120},
             {400,200}
@@ -189,26 +192,26 @@ namespace goldenaxe {
 
         // Stage 2
         {
-            {125,45},
-            {140,75},
-            {170,45},
-            {185,75}
+            {140,300},
+            {140,250},
+            {400,300},
+            {500,360}
         },
 
         // Stage 3
         {
-            {230,50},
-            {245,80},
-            {280,50},
-            {295,80}
+            {0,350},
+            {10,80},
+            {600,400},
+            {650,370}
         },
 
         // Stage 4
         {
-            {325,45},
+            {0,350},
             {340,75},
-            {385,45},
-            {398,75}
+            {600,400},
+            {700,450}
         }
     };
 
@@ -298,18 +301,17 @@ namespace goldenaxe {
 
     class GoldenAxe {
     private:
+
+        //source Picture's definitions
         static constexpr int WIN_W = 416;
         static constexpr int WIN_H = 121;
 
+        //dest Picture's definitions
         static constexpr int SCREEN_W = 800;
         static constexpr int SCREEN_H = 600;
 
-        // static float constexpr upperStartingPosition = WIN_H - 240;
-        // static float constexpr bottomStartingPosition = WIN_H - 120;
-        // static float constexpr leftStartingPosition = 150;
-        // static float constexpr rightStartingPosition = WIN_W - 150;
         static float constexpr speed = 2.0f;
-        static STAGE_INDEX currStage;
+        static STAGE_INDEX currStage; //initialized in ctor
 
         static constexpr int FPS = 60;
         static constexpr Uint64 GAME_FRAME = 1000 / FPS;
@@ -317,10 +319,21 @@ namespace goldenaxe {
         static constexpr float TEX_SCALE = 1.8f;
         static constexpr float BOX_SCALE = 10.0f;
 
-        SDL_FRect stageFrame = {
-            0, 0,
-            150, 224
-        };
+        SDL_FRect stageFrame;
+
+        //for transitioning
+        bool transitioning = false;
+        bool forwardtransition = false;
+
+        bool battleFinished = false;
+
+        float transitionTargetX = 0.f;
+
+        float cameraSpeed = 1.5f;
+
+        Entity transitionHero = Entity::first();
+
+
 
         SDL_Window* win = nullptr;
         SDL_Renderer* ren = nullptr;
@@ -330,6 +343,7 @@ namespace goldenaxe {
         SDL_Texture* santatex = nullptr;
         SDL_Texture* firetex = nullptr;
         SDL_Texture* stagetex = nullptr;
+        SDL_Texture* fontstex = nullptr;
 
         b2WorldId world = b2_nullWorldId;
         int totalKills = 0;
@@ -338,16 +352,22 @@ namespace goldenaxe {
         bool waveInProgress = true;
         float spawnTimer = 0.0f;
 
-        void box_system() const;
+
+
+        //void box_system() const;
         void input_system() const;
         void ai_system() const;
         void move_system() const;
-        void score_system() const;
+        //void score_system() const;
         void draw_system() const;
         void animation_system(float deltaTime) const;
-        void combat_system(float deltaTime) const;
+        void combat_system(float deltaTime) ;
         void magic_system(float dt) const;
-        void resetStage();
+        void resetStage(bool spawnHero);
+        void startStageTransition();
+        void transition_system();
+        bool battleOverStagePassed();
+        bool battleOverStageFailed();
         void gameplay_system(float dt);
 
         static constexpr Drawable makeDrawable(SDL_FRect part, SDL_Texture* texture);

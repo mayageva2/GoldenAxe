@@ -13,17 +13,18 @@ namespace goldenaxe {
 
         if (!SDL_Init(SDL_INIT_VIDEO)) {
             cout << SDL_GetError() << endl;
-            return;
-        }
+            return;        }
 
         if (!SDL_CreateWindowAndRenderer("Golden Axe", SCREEN_W, SCREEN_H, 0, &win, &ren)) {
             cout << SDL_GetError() << endl;
-            return;
+            return;//
         }
 
         b2WorldDef worldDef = b2DefaultWorldDef();
         worldDef.gravity = { 0.0f, 0.0f };
         world = b2CreateWorld(&worldDef);
+
+        stageFrame=STAGE_FRAMES[static_cast<int>(currStage)];
 
         if (b2World_IsValid(world) == false) {
             cout << "Failed to create Box2D world" << endl;
@@ -36,6 +37,12 @@ namespace goldenaxe {
         santatex = IMG_LoadTexture(ren, SANTA_FILE);
         firetex = IMG_LoadTexture(ren, FIRE_FILE);
         stagetex = IMG_LoadTexture(ren, STAGE_FILE);
+        fontstex = IMG_LoadTexture(ren, FONTS_FILE);
+
+        SDL_SetTextureScaleMode(
+    fontstex,
+    SDL_SCALEMODE_NEAREST
+);
 
         if (!stagetex) cout << "Warning: Could not load textures. Check external folder!" << endl;
     }
@@ -56,11 +63,223 @@ namespace goldenaxe {
         SDL_Quit();
     }
 
+    void GoldenAxe::startStageTransition() {
+
+        if (currStage == STAGE_INDEX::STAGE4 && forwardtransition)
+            return;
+        if (transitioning)
+            return;
+
+        transitioning = true;
+
+        transitionTargetX = forwardtransition ? STAGE_FRAMES[static_cast<int>(currStage) + 1].x : STAGE_FRAMES[static_cast<int>(STAGE_INDEX::STAGE1)].x;
+
+        // find hero
+        Mask heroMask =
+            MaskBuilder()
+            .set<Keys>()
+            .build();
+
+        for (Entity e = Entity::first();!e.eof();e.next()) {
+            if (e.test(heroMask)) {
+                transitionHero = e;
+                break;
+            }
+        }
+    }
+
+    bool GoldenAxe::battleOverStagePassed() {
+        Mask enemiesalive = MaskBuilder().set<AI>().build();
+
+        for (Entity e = Entity::first(); !e.eof(); e.next()) {
+            if (e.test(enemiesalive))
+                return false;
+        }
+        return true;
+    }
+
+    bool GoldenAxe::battleOverStageFailed() {
+        Mask playeralive = MaskBuilder().set<Keys>().build();
+
+        for (Entity e = Entity::first(); !e.eof(); e.next()) {
+            if (e.test(playeralive))
+                return false;
+        }
+        return true;
+    }
+
+    void GoldenAxe::transition_system() {
+
+        if (!transitioning)
+            return;
+
+        int camera_dir = forwardtransition ? 1 :-1;
+        // move camera
+        stageFrame.x += cameraSpeed * camera_dir;
+
+        // auto-walk hero
+        if (!transitionHero.eof()) {
+
+            auto& pos =
+                transitionHero.get<Position>();
+
+            auto& mov =
+                transitionHero.get<Movement>();
+
+            mov.vx = cameraSpeed * camera_dir;
+
+            pos.x += cameraSpeed * camera_dir;
+        }
+
+        // reached next stage
+        if ((stageFrame.x >= transitionTargetX && forwardtransition) || (stageFrame.x <= transitionTargetX && !forwardtransition)) {
+
+            stageFrame.x =
+                transitionTargetX;
+
+            // advance stage or move back to stage 1
+            currStage = forwardtransition ? static_cast<STAGE_INDEX>(static_cast<int>(currStage) + 1) : STAGE_INDEX::STAGE1;
+
+            // snap hero to spawn
+            const auto& s =
+                SPAWNS[
+                    static_cast<int>(
+                        currStage
+                    )
+                ];
+
+            if (!transitionHero.eof()) {
+
+                auto& pos =
+                    transitionHero.get<Position>();
+
+                auto& mov =
+                    transitionHero.get<Movement>();
+
+                float left =leftBound(currStage,s.hero1.y);
+
+                float right =rightBound(currStage,s.hero1.y);
+
+                pos.x =std::clamp(s.hero1.x,left + 10.f,right - 40.f);
+
+                pos.y = s.hero1.y;
+
+                auto& col =
+                    transitionHero.get<Collider>();
+
+                b2Body_SetTransform(
+                    col.body,
+                    {
+                        pos.x / BOX_SCALE,
+                        pos.y / BOX_SCALE
+                    },
+                    b2Body_GetRotation(col.body)
+                );
+
+                mov.vx = 0;
+                mov.vy = 0;
+            }
+
+            transitioning = false;
+            forwardtransition ? resetStage(false) : resetStage(true);
+            }
+    }
+  
     bool AI::is_anyone_attacking = false;
     float AI::global_attack_cooldown = 0.0f;
     bool is_player_active = false;
 
-    ent_type CreateHero(b2WorldId world, float x, float y, SDL_Texture* texture) {
+    // Assumptions:
+    // - You already loaded the font texture into SDL_Texture* fontTexture
+    // - Each character in the sprite sheet is 8x8 pixels
+    // - Renderer width is GameConfig::WIDTH * cellSize (or similar)
+
+
+    const int CHAR_W = 16;
+    const int CHAR_H = 16;
+
+    const int CELL_W = 18;
+    const int CELL_H = 18;
+
+    const int SCALE = 2;
+
+    void drawChar(SDL_Renderer* renderer,
+              SDL_Texture* fontTexture,
+              char c,
+              int x,
+              int y)
+    {
+        int index = c - 32;
+
+        if (index < 0)
+            return;
+
+        const int COLS = 16;
+
+        SDL_FRect src;
+
+        src.x = (index % COLS) * CELL_W;
+        src.y = (index / COLS) * CELL_H;
+
+        src.w = CHAR_W;
+        src.h = CHAR_H;
+
+        SDL_FRect dst;
+
+        dst.x = (float)x;
+        dst.y = (float)y;
+
+        dst.w = CHAR_W * SCALE;
+        dst.h = CHAR_H * SCALE;
+
+        SDL_RenderTexture(renderer,
+                          fontTexture,
+                          &src,
+                          &dst);
+    }
+
+    void drawText(SDL_Renderer* renderer,
+              SDL_Texture* fontTexture,
+              const std::string& text,
+              int x,
+              int y)
+    {
+        for (size_t i = 0; i < text.size(); i++)
+        {
+            drawChar(renderer,
+                     fontTexture,
+                     text[i],
+                     x + (int)i * CHAR_W * SCALE,
+                     y);
+        }
+    }
+
+    void drawHUD(SDL_Renderer* renderer,
+                 SDL_Texture* fontTexture,
+                 int score,
+                 int lives,
+                 int screenWidth)
+    {
+        std::string text =
+            "SCORE:" + std::to_string(score) +
+            "   LIVES:" + std::to_string(lives);
+
+        int textWidth =
+            (int)text.size() *
+            CHAR_W *
+            SCALE;
+
+        int x = (screenWidth - textWidth) / 2;
+
+        int y = 4;
+
+        drawText(renderer,
+                 fontTexture,
+                 text,
+                 x,
+                 y);
+      
+       ent_type CreateHero(b2WorldId world, float x, float y, SDL_Texture* texture) {
         ent_type hero = World::createEntity();
 
         b2BodyDef bodyDef = b2DefaultBodyDef();
@@ -131,7 +350,7 @@ namespace goldenaxe {
 
         return enemy;
     }
-
+      
     ent_type CreateSanta(b2WorldId world, float x, float y, SDL_Texture* texture) {
         ent_type santa = World::createEntity();
 
@@ -279,6 +498,12 @@ namespace goldenaxe {
                         dest.x += fOffset * TEX_SCALE;
                     }
                 }
+                if (e.has<Score>()) //Player
+                {
+                    auto& score = e.get<Score>();
+                    auto& lives = e.get<ChangeLives>();
+                    drawHUD(ren,fontstex,score.points,lives.lives,SCREEN_W);
+                }
 
                 SDL_RenderTextureRotated(ren, d.texture, &d.part, &dest, 0, nullptr, flip);
             }
@@ -362,30 +587,80 @@ namespace goldenaxe {
     }
 
     void GoldenAxe::input_system() const {
-        static const Mask mask = MaskBuilder()
-            .set<Keys>()
-            .set<Intent>()
-            .build();
+        if (transitioning)
+            return;
+            static const Mask mask = MaskBuilder()
+                .set<Keys>()
+                .set<Intent>()
+                .build();
 
-        SDL_PumpEvents();
-        const bool* keys = SDL_GetKeyboardState(nullptr);
+            SDL_PumpEvents();
+            const bool* keys = SDL_GetKeyboardState(nullptr);
 
-        for (Entity e = Entity::first(); !e.eof(); e.next()) {
-            if (e.test(mask)) {
-                const auto& k = e.get<Keys>();
-                auto& i = e.get<Intent>();
+            for (Entity e = Entity::first(); !e.eof(); e.next()) {
+                if (e.test(mask)) {
+                    const auto& k = e.get<Keys>();
+                    auto& i = e.get<Intent>();
 
-                i.up = keys[k.up];
-                i.down = keys[k.down];
-                i.left = keys[k.left];
-                i.right = keys[k.right];
-                i.hit = keys[k.hit];
-                i.magic = keys[k.magic];
-
-                if (i.up || i.down || i.left || i.right || i.hit || i.magic) {
-                    is_player_active = true;
+                    i.up = keys[k.up];
+                    i.down = keys[k.down];
+                    i.left = keys[k.left];
+                    i.right = keys[k.right];
+                    i.hit = keys[k.hit];
+                    i.magic = keys[k.magic];
                 }
             }
+    }
+
+   void GoldenAxe::move_system() const {
+
+    static const Mask movemask =
+        MaskBuilder()
+        .set<Intent>()
+        .set<Position>()
+        .set<Movement>()
+        .set<Collider>()
+        .build();
+
+    static const Mask collidemask =
+        MaskBuilder()
+        .set<Collider>()
+        .build();
+
+    for (Entity e = Entity::first();
+         !e.eof();
+         e.next()) {
+
+        if (!e.test(movemask))
+            continue;
+
+        // stun / hit freeze
+        if (e.has<Animation>() &&
+            e.get<Animation>().hitTimer > 0) {
+
+            auto& mov = e.get<Movement>();
+
+            mov.vx = 0;
+            mov.vy = 0;
+
+            continue;
+        }
+
+        auto& pos = e.get<Position>();
+        auto& mov = e.get<Movement>();
+        auto& intent = e.get<Intent>();
+        auto& col = e.get<Collider>();
+
+        // movement speed
+        float currentMaxSpeed = speed;
+
+        if (e.test(
+            MaskBuilder()
+            .set<AI>()
+            .build()))
+        {
+            currentMaxSpeed =
+                e.get<AI>().speed;
         }
     }
 
@@ -403,91 +678,171 @@ namespace goldenaxe {
             .set<Drawable>()
             .build();
 
-        for (Entity e = Entity::first(); !e.eof(); e.next()) {
-            if (e.test(movemask)) {
-                if (e.has<Animation>() && e.get<Animation>().hitTimer > 0) {
-                    auto& mov = e.get<Movement>();
-                    mov.vx = 0;
-                    mov.vy = 0;
-                    continue;
-                }
+        // reset velocity
+        mov.vx = 0;
+        mov.vy = 0;
 
-                auto& pos = e.get<Position>();
-                auto& mov = e.get<Movement>();
-                auto& intent = e.get<Intent>();
-                auto& col = e.get<Collider>();
-                const auto& d = e.get<Drawable>();
+        // input
+        if (!intent.hit) {
 
-                float currentMaxSpeed = speed;
-                if (e.test(MaskBuilder().set<AI>().build())) {
-                    currentMaxSpeed = e.get<AI>().speed;
-                }
+            if (intent.left)
+                mov.vx = -currentMaxSpeed;
 
-                mov.vx = 0;
-                mov.vy = 0;
-                if (!intent.hit) {
-                    if (intent.left)  mov.vx = -currentMaxSpeed;
-                    if (intent.right) mov.vx = currentMaxSpeed;
-                    if (intent.up)    mov.vy = -currentMaxSpeed;
-                    if (intent.down)  mov.vy = currentMaxSpeed;
-                }
+            if (intent.right)
+                mov.vx = currentMaxSpeed;
 
-                float nextX = pos.x + mov.vx;
-                float nextY = pos.y + mov.vy;
+            if (intent.up)
+                mov.vy = -currentMaxSpeed;
 
-                const auto& b = STAGE_BOUNDS[static_cast<int>(currStage)];
-                float topLimit = b.topY * SCALE_Y;
-                float bottomLimit = b.bottomY * SCALE_Y;
+            if (intent.down)
+                mov.vy = currentMaxSpeed;
+        }
 
-                if (nextY < topLimit) nextY = topLimit;
-                if (nextY + d.size.y > bottomLimit) nextY = bottomLimit - d.size.y;
+        // physics position
+        b2Vec2 currentPos =
+            b2Body_GetPosition(col.body);
 
-                float lb = leftBound(currStage, nextY);
-                float rb = rightBound(currStage, nextY);
+        const auto& d =
+            e.get<Drawable>();
 
-                if (nextX < lb) nextX = lb;
-                if (nextX + d.size.x > rb) nextX = rb - d.size.x;
+        // next position
+        SDL_FRect next = {
 
-                bool collisionBlocked = false;
-                SDL_FRect nextRect = { nextX, nextY, d.size.x, d.size.y };
+            currentPos.x * BOX_SCALE,
 
-                for (Entity e1 = Entity::first(); !e1.eof(); e1.next()) {
-                    if (e1.entity().id == e.entity().id) continue;
+            currentPos.y * BOX_SCALE,
 
-                    if (e1.test(collidemask)) {
-                        const auto& c1 = e1.get<Collider>();
-                        const auto& d1 = e1.get<Drawable>();
+            d.size.x,
 
-                        b2Vec2 p1 = b2Body_GetPosition(c1.body);
-                        SDL_FRect rect1 = {
-                            p1.x * BOX_SCALE,
-                            p1.y * BOX_SCALE,
-                            d1.size.x,
-                            d1.size.y
-                        };
+            d.size.y
+        };
 
-                        if (goldenaxe::overlap(nextRect, rect1)) {
-                            collisionBlocked = true;
-                            break;
-                        }
-                    }
-                }
+        next.x += mov.vx;
+        next.y += mov.vy;
 
-                if (!collisionBlocked) {
-                    b2Vec2 newPos = { nextX / BOX_SCALE, nextY / BOX_SCALE };
-                    b2Rot currentRotation = b2Body_GetRotation(col.body);
-                    b2Body_SetTransform(col.body, newPos, currentRotation);
+        // prevent float drift
+        if (mov.vx == 0)
+            next.x = pos.x;
 
-                    pos.x = nextX;
-                    pos.y = nextY;
-                }
+        if (mov.vy == 0)
+            next.y = pos.y;
+
+        // stage bounds
+        float left =
+            leftBound(
+                currStage,
+                next.y
+            );
+
+        float right =
+            rightBound(
+                currStage,
+                next.y
+            );
+
+        const auto& b =
+            STAGE_BOUNDS[
+                static_cast<int>(
+                    currStage
+                )
+            ];
+
+        float top =
+            b.topY * SCALE_Y;
+
+        float bottom =
+            b.bottomY * SCALE_Y;
+
+        // clamp to stage instead of blocking
+        next.x = std::clamp(
+            next.x,
+            left,
+            right - next.w
+        );
+
+        next.y = std::clamp(
+            next.y,
+            top,
+            bottom - next.h
+        );
+
+        // collision check
+        bool collided = false;
+
+        for (Entity e1 = Entity::first();
+             !e1.eof();
+             e1.next()) {
+
+            if (e1.entity().id ==
+                e.entity().id)
+                continue;
+
+            if (!e1.test(collidemask))
+                continue;
+
+            const auto& c1 =
+                e1.get<Collider>();
+
+            const auto& d1 =
+                e1.get<Drawable>();
+
+            b2Vec2 p1 =
+                b2Body_GetPosition(
+                    c1.body
+                );
+
+            SDL_FRect rect1 = {
+
+                p1.x * BOX_SCALE,
+
+                p1.y * BOX_SCALE,
+
+                d1.size.x,
+
+                d1.size.y
+            };
+
+            if (goldenaxe::overlap(
+                next,
+                rect1))
+            {
+                collided = true;
+                break;
             }
         }
+
+        // apply movement only if no collision
+        if (!collided) {
+
+            b2Vec2 newPos = {
+
+                next.x / BOX_SCALE,
+
+                next.y / BOX_SCALE
+            };
+
+            b2Rot currentRotation =
+                b2Body_GetRotation(
+                    col.body
+                );
+
+            b2Body_SetTransform(
+                col.body,
+                newPos,
+                currentRotation
+            );
+
+            pos.x = next.x;
+            pos.y = next.y;
+        }
     }
+}
 
     void GoldenAxe::ai_system() const {
-    Position heroPos = { 0, 0 };
-    bool heroFound = false;
+        if (transitioning)
+            return;
+        Position heroPos = {0, 0};
+        bool heroFound = false;
 
     for (Entity h = Entity::first(); !h.eof(); h.next()) {
         if (h.has<FlaskUsage>() && h.get<FlaskUsage>().magic_active) return;
@@ -614,9 +969,12 @@ namespace goldenaxe {
     }
 }
 
-    void GoldenAxe::combat_system(float deltaTime) const {
+    void GoldenAxe::combat_system(float deltaTime) {
+        if (transitioning)
+            return;
         static const Mask attackerMask = MaskBuilder().set<Intent>().set<Position>().set<Animation>().build();
         static const Mask victimMask = MaskBuilder().set<ChangeLives>().set<Position>().build();
+        static const Mask scoreMask = MaskBuilder().set<Score>().build();
 
         for (Entity attacker = Entity::first(); !attacker.eof(); attacker.next()) {
             if (!attacker.test(attackerMask)) continue;
@@ -632,7 +990,11 @@ namespace goldenaxe {
                     const auto& vPos = victim.get<Position>();
                     if (abs(aPos.x - vPos.x) < 70.0f && abs(aPos.y - vPos.y) < 20.0f) {
                         auto& vLife = victim.get<ChangeLives>();
-                        if (vLife.invulnTimer <= 0) {
+
+
+                        if (vLife.invulnTimer <= 0) { //if confirms attack is fully performed
+
+                            //Perfom the hit on the victim
                             vLife.lives -= 1;
                             vLife.invulnTimer = 1.5f;
                             if (victim.has<Animation>()) victim.get<Animation>().hitTimer = 0.5f;
@@ -641,7 +1003,11 @@ namespace goldenaxe {
                                 Position p = victim.get<Position>();
                                 CreateFlask(world, p.x, p.y + 20, flasktex);
                             }
-                        }
+                              
+                            if (attacker.has<Score>()) {
+                                auto& score = attacker.get<Score>();
+                                score.points++;
+                            }
                     }
                 }
             }
@@ -686,6 +1052,8 @@ namespace goldenaxe {
                                 e.get<Animation>().hitTimer = 1.0f;
                             }
                         }
+
+
                     }
                 }
 
@@ -693,105 +1061,76 @@ namespace goldenaxe {
             }
         }
 
-        for (Entity f = Entity::first(); !f.eof(); ) {
-            bool destroyed = false;
-            if (f.has<FireMagicTag>()) {
-                auto& pos = f.get<Position>();
-                auto& mov = f.get<Movement>();
-
-                pos.x += mov.vx;
-                pos.y += mov.vy;
-
-                if (pos.y > SCREEN_H + 100 || pos.x > SCREEN_W + 100) {
-                    f.destroy();
-                    destroyed = true;
+        for (Entity e = Entity::first(); !e.eof(); ) {
+            bool entityWasDestroyed = false;
+            if (e.has<Animation>()) {
+                auto& anim = e.get<Animation>();
+                if (anim.hitTimer > 0) anim.hitTimer -= deltaTime;
+                if (anim.hitTimer <= 0 && anim.lieDeadTimer > 0) {
+                    anim.lieDeadTimer -= deltaTime;
                 }
             }
-            if (!destroyed) f.next();
+
+            if (e.has<ChangeLives>()) {
+                auto& cl = e.get<ChangeLives>();
+                if (cl.invulnTimer > 0) cl.invulnTimer -= deltaTime;
+                if (cl.lives <= 0) {
+                    auto& anim = e.get<Animation>();
+                    if (anim.hitTimer <= 0 && anim.lieDeadTimer <= 0) {
+                        /*if (e.has<Keys>()) { //Perform full restart
+                            resetStage(true);
+                            break;
+                        } else {*/
+                            e.destroy();
+                            entityWasDestroyed = true;
+                        //}
+                    }
+                }
+            }
+
+            if (!entityWasDestroyed) {
+                e.next();
+            }
         }
     }
 
-    void GoldenAxe::resetStage() {
+    void GoldenAxe::resetStage(bool spawnHero) {
 
-        Mask m =
-            MaskBuilder()
-            .set<Movement>()
-            .build();
+        battleFinished = false;
 
-        const auto& s =SPAWNS[static_cast<int>(currStage)];
-
-        for (auto e = Entity::first();
-             !e.eof();
-             e.next()) {
-
-            if (e.test(m))
-                e.destroy();
-             }
-
+        const auto& s =
+            SPAWNS[
+                static_cast<int>(currStage)
+            ];
+      
         totalKills = 0;
         santaSpawned = false;
         is_player_active = false;
         spawnTimer = 5.0f;
 
-        // Hero 1
-        ent_type hero =
-            CreateHero(
-                world,
-                s.hero1.x,
-                s.hero1.y,
-                characterstex
-            );
+        // Spawn hero only if requested
+        if (spawnHero) {
 
-        World::addComponent(
-            hero,
-            Intent{
-                false,false,
-                false,false,
-                false
+            //Destroy all enemies
+            static const Mask enemymask= MaskBuilder().set<AI>().build();
+            for (Entity e = Entity::first(); !e.eof(); e.next()) {
+                if (e.test(enemymask)) e.destroy();
             }
-        );
 
-        World::addComponent(
-            hero,
-            Keys{
-                SDL_SCANCODE_W,
-                SDL_SCANCODE_S,
-                SDL_SCANCODE_D,
-                SDL_SCANCODE_A,
-                SDL_SCANCODE_F,
-                SDL_SCANCODE_G
-            }
-        );
+            ent_type hero =
+                CreateHero(world,s.hero1.x,s.hero1.y,characterstex);
 
-        /*// Hero 2
-        CreateHero(
-            world,
-            s.hero2.x,
-            s.hero2.y,
-            characterstex
-        );*/
+            World::addComponent(hero,Intent{false,false,false,false, false});
+
+            World::addComponent(hero,Keys{SDL_SCANCODE_W,SDL_SCANCODE_S,SDL_SCANCODE_D,SDL_SCANCODE_A,SDL_SCANCODE_F});
+
+        }
 
         // Enemy 1
-        CreateEnemy(
-            world,
-            s.enemy1.x,
-            s.enemy1.y,
-            55,
-            70,
-            4,
-            enemiestex
-        );
+        CreateEnemy(world,s.enemy1.x,s.enemy1.y,55,70,4,enemiestex);
 
         // Enemy 2
-        CreateEnemy(
-            world,
-            s.enemy2.x,
-            s.enemy2.y,
-            55,
-            70,
-            4,
-            enemiestex
-        );
+        CreateEnemy(world,s.enemy2.x,s.enemy2.y,55,70,4,enemiestex);
     }
 
     void GoldenAxe::gameplay_system(float dt) {
@@ -836,6 +1175,18 @@ namespace goldenaxe {
                 auto& cl = e.get<ChangeLives>();
                 if (cl.invulnTimer > 0) cl.invulnTimer -= dt;
 
+            if (battleOverStagePassed() &&!battleFinished) {
+                battleFinished = true;
+                forwardtransition = true;
+                startStageTransition();
+            }
+            else if (battleOverStageFailed() &&!battleFinished) {
+                battleFinished=true;
+                forwardtransition=false;
+                startStageTransition();
+            }
+
+            transition_system();
                 if (!e.has<Keys>() && cl.lives > 0 && !e.has<SantaTag>()) {
                     liveEnemies++;
                 }
