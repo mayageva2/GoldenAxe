@@ -8,8 +8,8 @@
 
 #define CHARACTERS_FILE "external/characters.png"
 #define ENEMIES_FILE "external/enemies.png"
-#define FLASK_FILE "external/flask.jpg"
 #define SANTA_FILE "external/santa.png"
+#define FIRE_FILE "external/fire.png"
 #define STAGE_FILE "external/longstage.jpg"
 #define FONTS_FILE "external/fonts.png"
 
@@ -33,11 +33,11 @@ namespace goldenaxe {
     };
 
     struct Keys {
-        SDL_Scancode up, down, right, left, hit;
+        SDL_Scancode up, down, right, left, hit, magic;
     };
 
     struct Intent {
-        bool up, down, right, left, hit;
+        bool up, down, right, left, hit, magic;
     };
 
     struct Drawable {
@@ -89,6 +89,7 @@ namespace goldenaxe {
         static bool is_anyone_attacking;
         static float global_attack_cooldown;
         bool is_player_in_range = false;
+        bool lastFacingRight = false;
     };
 
     struct Hit {
@@ -99,11 +100,16 @@ namespace goldenaxe {
     struct FlaskUsage {
         int current_flasks = 0;
         int goal = 5;
+        bool magic_active = false;
+        float magic_timer = 0.0f;
     };
 
     // Events (Tags)
     struct EnemyKilledEvent {};
     struct FlaskCollectedEvent {};
+    struct SantaTag {};
+    struct FlaskTag {};
+    struct FireMagicTag {};
 
     //Stage indicator
     enum class STAGE_INDEX{STAGE1,STAGE2,STAGE3,STAGE4};
@@ -335,13 +341,16 @@ namespace goldenaxe {
         SDL_Texture* enemiestex = nullptr;
         SDL_Texture* flasktex = nullptr;
         SDL_Texture* santatex = nullptr;
+        SDL_Texture* firetex = nullptr;
         SDL_Texture* stagetex = nullptr;
         SDL_Texture* fontstex = nullptr;
 
         b2WorldId world = b2_nullWorldId;
         int totalKills = 0;
-        static constexpr int KILLS_REQUIRED = 10;
+        bool santaSpawned = false;
+        static constexpr int KILLS_REQUIRED = 6;
         bool waveInProgress = true;
+        float spawnTimer = 0.0f;
 
 
 
@@ -353,18 +362,23 @@ namespace goldenaxe {
         void draw_system() const;
         void animation_system(float deltaTime) const;
         void combat_system(float deltaTime) ;
+        void magic_system(float dt) const;
         void resetStage(bool spawnHero);
         void startStageTransition();
         void transition_system();
         bool battleOverStagePassed();
         bool battleOverStageFailed();
+        void gameplay_system(float dt);
 
         static constexpr Drawable makeDrawable(SDL_FRect part, SDL_Texture* texture);
         static constexpr SDL_FRect colliderRect(const Position& p, const Drawable& d);
+        static constexpr float upperStartingPosition = 300.0f;
+        static constexpr float bottomStartingPosition = 500.0f;
 
     public:
         GoldenAxe();
         ~GoldenAxe();
+        static STAGE_INDEX getCurrStage() { return currStage; }
         void run();
     };
 
@@ -372,7 +386,8 @@ namespace goldenaxe {
 
     static ent_type CreateHero(b2WorldId world, float x, float y, SDL_Texture* texture);
     static ent_type CreateEnemy(b2WorldId world, float x, float y, float w, float h, int frames, SDL_Texture* texture);
-    static ent_type CreateSanta(b2WorldId world, float x, float y);
+    static ent_type CreateSanta(b2WorldId world, float x, float y, SDL_Texture* texture);
+    static ent_type CreateFlask(b2WorldId world, float x, float y, SDL_Texture* texture);
 
     // --- Specialized Systems ---
 
@@ -407,4 +422,20 @@ template <> struct bagel::Storage<goldenaxe::ChangeLives> final : bagel::NoInsta
 
 template <> struct bagel::Storage<goldenaxe::Score> final : bagel::NoInstance {
     using type = bagel::PackedStorage<goldenaxe::Score>;
+};
+
+template <> struct bagel::Storage<goldenaxe::SantaTag> final : bagel::NoInstance {
+    using type = bagel::PackedStorage<goldenaxe::SantaTag>;
+};
+
+template <> struct bagel::Storage<goldenaxe::FlaskTag> final : bagel::NoInstance {
+    using type = bagel::PackedStorage<goldenaxe::FlaskTag>;
+};
+
+template <> struct bagel::Storage<goldenaxe::FlaskUsage> final : bagel::NoInstance {
+    using type = bagel::PackedStorage<goldenaxe::FlaskUsage>;
+};
+
+template <> struct bagel::Storage<goldenaxe::FireMagicTag> final : bagel::NoInstance {
+    using type = bagel::PackedStorage<goldenaxe::FireMagicTag>;
 };
