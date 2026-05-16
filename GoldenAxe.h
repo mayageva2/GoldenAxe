@@ -12,6 +12,7 @@
 #define FIRE_FILE "external/fire.png"
 #define STAGE_FILE "external/longstage.jpg"
 #define FONTS_FILE "external/fonts.png"
+#define FLASKBAR_FILE "external/flaskBar.png"
 
 using namespace bagel;
 
@@ -99,7 +100,7 @@ namespace goldenaxe {
 
     struct FlaskUsage {
         int current_flasks = 0;
-        int goal = 5;
+        int goal = 4;
         bool magic_active = false;
         float magic_timer = 0.0f;
     };
@@ -333,8 +334,6 @@ namespace goldenaxe {
 
         Entity transitionHero = Entity::first();
 
-
-
         SDL_Window* win = nullptr;
         SDL_Renderer* ren = nullptr;
         SDL_Texture* characterstex = nullptr;
@@ -344,6 +343,7 @@ namespace goldenaxe {
         SDL_Texture* firetex = nullptr;
         SDL_Texture* stagetex = nullptr;
         SDL_Texture* fontstex = nullptr;
+        SDL_Texture* flaskbartex = nullptr;
 
         b2WorldId world = b2_nullWorldId;
         int totalKills = 0;
@@ -351,8 +351,6 @@ namespace goldenaxe {
         static constexpr int KILLS_REQUIRED = 6;
         bool waveInProgress = true;
         float spawnTimer = 0.0f;
-
-
 
         //void box_system() const;
         void input_system() const;
@@ -368,7 +366,9 @@ namespace goldenaxe {
         void transition_system();
         bool battleOverStagePassed();
         bool battleOverStageFailed();
-        void gameplay_system(float dt);
+        void gameplay_system(float dt, bool spawnHero);
+        void static drawFlaskBar(SDL_Renderer* renderer, SDL_Texture* barTex, int current, int max);
+
 
         static constexpr Drawable makeDrawable(SDL_FRect part, SDL_Texture* texture);
         static constexpr SDL_FRect colliderRect(const Position& p, const Drawable& d);
