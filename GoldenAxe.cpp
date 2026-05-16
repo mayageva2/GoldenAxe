@@ -757,7 +757,7 @@ namespace goldenaxe {
         }
     }
 
-    void GoldenAxe::combat_system(float deltaTime) const {
+    void GoldenAxe::combat_system(float deltaTime) {
         if (transitioning)
             return;
         static const Mask attackerMask = MaskBuilder().set<Intent>().set<Position>().set<Animation>().build();
@@ -784,6 +784,38 @@ namespace goldenaxe {
                         }
                     }
                 }
+            }
+        }
+
+        for (Entity e = Entity::first(); !e.eof(); ) {
+            bool entityWasDestroyed = false;
+            if (e.has<Animation>()) {
+                auto& anim = e.get<Animation>();
+                if (anim.hitTimer > 0) anim.hitTimer -= deltaTime;
+                if (anim.hitTimer <= 0 && anim.lieDeadTimer > 0) {
+                    anim.lieDeadTimer -= deltaTime;
+                }
+            }
+
+            if (e.has<ChangeLives>()) {
+                auto& cl = e.get<ChangeLives>();
+                if (cl.invulnTimer > 0) cl.invulnTimer -= deltaTime;
+                if (cl.lives <= 0) {
+                    auto& anim = e.get<Animation>();
+                    if (anim.hitTimer <= 0 && anim.lieDeadTimer <= 0) {
+                        if (e.has<Keys>()) {
+                            resetStage(true);
+                            break;
+                        } else {
+                            e.destroy();
+                            entityWasDestroyed = true;
+                        }
+                    }
+                }
+            }
+
+            if (!entityWasDestroyed) {
+                e.next();
             }
         }
     }
@@ -892,38 +924,6 @@ namespace goldenaxe {
             input_system();
             ai_system();
             combat_system(dt);
-
-            for (Entity e = Entity::first(); !e.eof(); ) {
-                bool entityWasDestroyed = false;
-                if (e.has<Animation>()) {
-                    auto& anim = e.get<Animation>();
-                    if (anim.hitTimer > 0) anim.hitTimer -= dt;
-                    if (anim.hitTimer <= 0 && anim.lieDeadTimer > 0) {
-                        anim.lieDeadTimer -= dt;
-                    }
-                }
-
-                if (e.has<ChangeLives>()) {
-                    auto& cl = e.get<ChangeLives>();
-                    if (cl.invulnTimer > 0) cl.invulnTimer -= dt;
-                    if (cl.lives <= 0) {
-                        auto& anim = e.get<Animation>();
-                        if (anim.hitTimer <= 0 && anim.lieDeadTimer <= 0) {
-                            if (e.has<Keys>()) {
-                                resetStage(true);
-                                break;
-                            } else {
-                                e.destroy();
-                                entityWasDestroyed = true;
-                            }
-                        }
-                    }
-                }
-
-                if (!entityWasDestroyed) {
-                    e.next();
-                }
-            }
 
             if (battleOver() &&!battleFinished) {
                 battleFinished = true;

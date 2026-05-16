@@ -11,6 +11,7 @@
 #define FLASK_FILE "external/flask.jpg"
 #define SANTA_FILE "external/santa.png"
 #define STAGE_FILE "external/longstage.jpg"
+#define FONTS_FILE "external/fonts.png"
 
 using namespace bagel;
 
@@ -349,7 +350,7 @@ namespace goldenaxe {
         void score_system() const;
         void draw_system() const;
         void animation_system(float deltaTime) const;
-        void combat_system(float deltaTime) const;
+        void combat_system(float deltaTime) ;
         void resetStage(bool spawnHero);
         void startStageTransition();
         void transition_system();
