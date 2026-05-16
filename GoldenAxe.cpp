@@ -7,6 +7,7 @@ using namespace std;
 using namespace bagel;
 
 namespace goldenaxe {
+    /// @brief Constructor: Initializes SDL, Box2D world, and loads textures.
     GoldenAxe::GoldenAxe() {
         srand((unsigned int)time(NULL));
 
@@ -46,6 +47,7 @@ namespace goldenaxe {
 
     STAGE_INDEX GoldenAxe::currStage = STAGE_INDEX::STAGE1;
 
+    /// @brief Destructor: Cleans up textures, Box2D world, and SDL resources.
     GoldenAxe::~GoldenAxe() {
         if (b2World_IsValid(world)) b2DestroyWorld(world);
         if (characterstex) SDL_DestroyTexture(characterstex);
@@ -61,6 +63,7 @@ namespace goldenaxe {
         SDL_Quit();
     }
 
+    /// @brief Triggers the stage scrolling sequence.
     void GoldenAxe::startStageTransition() {
 
         if (currStage == STAGE_INDEX::STAGE4 && forwardtransition)
@@ -82,6 +85,8 @@ namespace goldenaxe {
         }
     }
 
+    /// @brief Checks for remaining enemies or flasks to determine if a stage is cleared.
+    /// @return true if the area is clear.
     bool GoldenAxe::battleOverStagePassed() {
         Mask enemiesalive = MaskBuilder().set<AI>().build();
         Mask flasksOnGround = MaskBuilder().set<FlaskTag>().build();
@@ -106,6 +111,7 @@ namespace goldenaxe {
         return true;
     }
 
+    /// @brief Handles the smooth movement of the camera and hero during stage changes.
     void GoldenAxe::transition_system() {
 
         if (!transitioning)
@@ -179,6 +185,11 @@ namespace goldenaxe {
 
     const int SCALE = 2;
 
+    /// @brief Draws individual characters from the sprite-sheet font.
+    /// @param renderer SDL Renderer.
+    /// @param fontTexture Texture containing the character set.
+    /// @param c The character to draw.
+    /// @param x,y Screen coordinates.
     void drawChar(SDL_Renderer* renderer, SDL_Texture* fontTexture, char c, int x, int y)
     {
         int index = c - 32;
@@ -218,6 +229,7 @@ namespace goldenaxe {
         drawText(renderer,fontTexture,text,x,y);
     }
 
+    /// @brief Renders the HUD bar showing collected magic flasks.
     void GoldenAxe::drawFlaskBar(SDL_Renderer* renderer, SDL_Texture* barTex, int current, int max) {
         if (!barTex) return;
 
@@ -243,7 +255,8 @@ namespace goldenaxe {
             SDL_RenderTexture(renderer, barTex, &bottleSrc, &bottleDst);
         }
     }
-      
+
+    /// @brief Factory: Configures a Hero entity with components and Box2D body.
     ent_type CreateHero(b2WorldId world, float x, float y, SDL_Texture* texture) {
         ent_type hero = World::createEntity();
 
@@ -407,6 +420,7 @@ namespace goldenaxe {
         };
     }
 
+    /// @brief The primary rendering system. Clears screen, draws stage, and iterates through entities.
     void GoldenAxe::draw_system() const {
 
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
@@ -785,6 +799,7 @@ namespace goldenaxe {
         }
     }
 
+    /// @brief Logic system that updates AI Intent based on player proximity and AIType.
     void GoldenAxe::ai_system() const {
         if (transitioning)
             return;
@@ -916,6 +931,7 @@ namespace goldenaxe {
         }
     }
 
+    /// @brief Resolves attacks. Checks bounding box overlap between an attacking frame and a victim.
     void GoldenAxe::combat_system(float deltaTime) {
         if (transitioning)
             return;
@@ -963,6 +979,7 @@ namespace goldenaxe {
         }
     }
 
+    /// @brief Spawns fire effects and damages all enemies when magic is triggered.
     void GoldenAxe::magic_system(float dt) const {
         static const Mask heroMagicMask = MaskBuilder().set<FlaskUsage>().set<Intent>().build();
         static const Mask enemyMask = MaskBuilder().set<ChangeLives>().build();
@@ -1188,6 +1205,7 @@ namespace goldenaxe {
         }
     }
 
+    /// @brief The main execution loop.
     void GoldenAxe::run() {
         bool spawnHero = true;
         resetStage(spawnHero);
