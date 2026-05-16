@@ -317,6 +317,7 @@ namespace goldenaxe {
 
         //for transitioning
         bool transitioning = false;
+        bool forwardtransition = false;
 
         bool battleFinished = false;
 
@@ -344,18 +345,19 @@ namespace goldenaxe {
 
 
 
-        void box_system() const;
+        //void box_system() const;
         void input_system() const;
         void ai_system() const;
         void move_system() const;
-        void score_system() const;
+        //void score_system() const;
         void draw_system() const;
         void animation_system(float deltaTime) const;
         void combat_system(float deltaTime) ;
         void resetStage(bool spawnHero);
         void startStageTransition();
         void transition_system();
-        bool battleOver();
+        bool battleOverStagePassed();
+        bool battleOverStageFailed();
 
         static constexpr Drawable makeDrawable(SDL_FRect part, SDL_Texture* texture);
         static constexpr SDL_FRect colliderRect(const Position& p, const Drawable& d);

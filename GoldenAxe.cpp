@@ -38,6 +38,11 @@ namespace goldenaxe {
         stagetex = IMG_LoadTexture(ren, STAGE_FILE);
         fontstex = IMG_LoadTexture(ren, FONTS_FILE);
 
+        SDL_SetTextureScaleMode(
+    fontstex,
+    SDL_SCALEMODE_NEAREST
+);
+
         if (!stagetex) cout << "Warning: Could not load textures. Check external folder!" << endl;
     }
 
@@ -58,18 +63,14 @@ namespace goldenaxe {
 
     void GoldenAxe::startStageTransition() {
 
-        if (currStage ==
-            STAGE_INDEX::STAGE4)
+        if (currStage == STAGE_INDEX::STAGE4 && forwardtransition)
             return;
         if (transitioning)
             return;
 
         transitioning = true;
 
-        transitionTargetX =
-            STAGE_FRAMES[
-                static_cast<int>(currStage) + 1
-            ].x;
+        transitionTargetX = forwardtransition ? STAGE_FRAMES[static_cast<int>(currStage) + 1].x : STAGE_FRAMES[static_cast<int>(STAGE_INDEX::STAGE1)].x;
 
         // find hero
         Mask heroMask =
@@ -77,23 +78,29 @@ namespace goldenaxe {
             .set<Keys>()
             .build();
 
-        for (Entity e = Entity::first();
-             !e.eof();
-             e.next()) {
-
+        for (Entity e = Entity::first();!e.eof();e.next()) {
             if (e.test(heroMask)) {
-
                 transitionHero = e;
                 break;
             }
-             }
+        }
     }
 
-    bool GoldenAxe::battleOver() {
+    bool GoldenAxe::battleOverStagePassed() {
         Mask enemiesalive = MaskBuilder().set<AI>().build();
 
         for (Entity e = Entity::first(); !e.eof(); e.next()) {
             if (e.test(enemiesalive))
+                return false;
+        }
+        return true;
+    }
+
+    bool GoldenAxe::battleOverStageFailed() {
+        Mask playeralive = MaskBuilder().set<Keys>().build();
+
+        for (Entity e = Entity::first(); !e.eof(); e.next()) {
+            if (e.test(playeralive))
                 return false;
         }
         return true;
@@ -104,8 +111,9 @@ namespace goldenaxe {
         if (!transitioning)
             return;
 
+        int camera_dir = forwardtransition ? 1 :-1;
         // move camera
-        stageFrame.x += cameraSpeed;
+        stageFrame.x += cameraSpeed * camera_dir;
 
         // auto-walk hero
         if (!transitionHero.eof()) {
@@ -116,25 +124,19 @@ namespace goldenaxe {
             auto& mov =
                 transitionHero.get<Movement>();
 
-            mov.vx = cameraSpeed;
+            mov.vx = cameraSpeed * camera_dir;
 
-            pos.x += cameraSpeed;
+            pos.x += cameraSpeed * camera_dir;
         }
 
         // reached next stage
-        if (stageFrame.x >=
-            transitionTargetX) {
+        if ((stageFrame.x >= transitionTargetX && forwardtransition) || (stageFrame.x <= transitionTargetX && !forwardtransition)) {
 
             stageFrame.x =
                 transitionTargetX;
 
-            // advance stage
-            currStage =
-                static_cast<STAGE_INDEX>(
-                    static_cast<int>(
-                        currStage
-                    ) + 1
-                );
+            // advance stage or move back to stage 1
+            currStage = forwardtransition ? static_cast<STAGE_INDEX>(static_cast<int>(currStage) + 1) : STAGE_INDEX::STAGE1;
 
             // snap hero to spawn
             const auto& s =
@@ -156,12 +158,7 @@ namespace goldenaxe {
 
                 float right =rightBound(currStage,s.hero1.y);
 
-                pos.x =
-    std::clamp(
-        s.hero1.x,
-        left + 10.f,
-        right - 40.f
-    );
+                pos.x =std::clamp(s.hero1.x,left + 10.f,right - 40.f);
 
                 pos.y = s.hero1.y;
 
@@ -182,7 +179,7 @@ namespace goldenaxe {
             }
 
             transitioning = false;
-            resetStage(false);
+            forwardtransition ? resetStage(false) : resetStage(true);
             }
     }
 
@@ -261,15 +258,19 @@ namespace goldenaxe {
     // - Renderer width is GameConfig::WIDTH * cellSize (or similar)
 
 
-    const int CHAR_W = 17;
-    const int CHAR_H = 17;
+    const int CHAR_W = 16;
+    const int CHAR_H = 16;
+
+    const int CELL_W = 18;
+    const int CELL_H = 18;
+
     const int SCALE = 2;
 
     void drawChar(SDL_Renderer* renderer,
-                  SDL_Texture* fontTexture,
-                  char c,
-                  int x,
-                  int y)
+              SDL_Texture* fontTexture,
+              char c,
+              int x,
+              int y)
     {
         int index = c - 32;
 
@@ -279,18 +280,25 @@ namespace goldenaxe {
         const int COLS = 16;
 
         SDL_FRect src;
-        src.x = (index % COLS) * CHAR_W;
-        src.y = (index / COLS) * CHAR_H;
+
+        src.x = (index % COLS) * CELL_W;
+        src.y = (index / COLS) * CELL_H;
+
         src.w = CHAR_W;
         src.h = CHAR_H;
 
         SDL_FRect dst;
+
         dst.x = (float)x;
         dst.y = (float)y;
+
         dst.w = CHAR_W * SCALE;
         dst.h = CHAR_H * SCALE;
 
-        SDL_RenderTexture(renderer, fontTexture, &src, &dst);
+        SDL_RenderTexture(renderer,
+                          fontTexture,
+                          &src,
+                          &dst);
     }
 
     void drawText(SDL_Renderer* renderer,
@@ -309,7 +317,6 @@ namespace goldenaxe {
         }
     }
 
-    // Draw HUD centered at top
     void drawHUD(SDL_Renderer* renderer,
                  SDL_Texture* fontTexture,
                  int score,
@@ -317,15 +324,23 @@ namespace goldenaxe {
                  int screenWidth)
     {
         std::string text =
-            "SCORE: " + std::to_string(score) +
-            "   LIVES: " + std::to_string(lives);
+            "SCORE:" + std::to_string(score) +
+            "   LIVES:" + std::to_string(lives);
 
-        int textWidth = (int)text.size() * CHAR_W;
+        int textWidth =
+            (int)text.size() *
+            CHAR_W *
+            SCALE;
 
         int x = (screenWidth - textWidth) / 2;
-        int y = 5;
 
-        drawText(renderer, fontTexture, text, x, y);
+        int y = 4;
+
+        drawText(renderer,
+                 fontTexture,
+                 text,
+                 x,
+                 y);
     }
 
     constexpr Drawable GoldenAxe::makeDrawable(SDL_FRect part, SDL_Texture* texture) {
@@ -389,7 +404,7 @@ namespace goldenaxe {
                 {
                     auto& score = e.get<Score>();
                     auto& lives = e.get<ChangeLives>();
-                    drawHUD(ren,fontstex,score.points,lives.lives,WIN_W);
+                    drawHUD(ren,fontstex,score.points,lives.lives,SCREEN_W);
                 }
 
                 SDL_RenderTextureRotated(ren, d.texture, &d.part, &dest, 0, nullptr, flip);
@@ -897,13 +912,13 @@ namespace goldenaxe {
                 if (cl.lives <= 0) {
                     auto& anim = e.get<Animation>();
                     if (anim.hitTimer <= 0 && anim.lieDeadTimer <= 0) {
-                        if (e.has<Keys>()) {
+                        /*if (e.has<Keys>()) { //Perform full restart
                             resetStage(true);
                             break;
-                        } else {
+                        } else {*/
                             e.destroy();
                             entityWasDestroyed = true;
-                        }
+                        //}
                     }
                 }
             }
@@ -923,84 +938,29 @@ namespace goldenaxe {
                 static_cast<int>(currStage)
             ];
 
-       /* Mask m =
-            MaskBuilder()
-            .set<Movement>()
-            .build();
-
-        for (auto e = Entity::first();
-             !e.eof();
-             e.next()) {
-
-            if (e.test(m))
-                e.destroy();
-             }
-
-        is_player_active = false;*/
-
         // Spawn hero only if requested
         if (spawnHero) {
 
+            //Destroy all enemies
+            static const Mask enemymask= MaskBuilder().set<AI>().build();
+            for (Entity e = Entity::first(); !e.eof(); e.next()) {
+                if (e.test(enemymask)) e.destroy();
+            }
+
             ent_type hero =
-                CreateHero(
-                    world,
-                    s.hero1.x,
-                    s.hero1.y,
-                    characterstex
-                );
+                CreateHero(world,s.hero1.x,s.hero1.y,characterstex);
 
-            World::addComponent(
-                hero,
-                Intent{
-                    false,false,
-                    false,false,
-                    false
-                }
-            );
+            World::addComponent(hero,Intent{false,false,false,false, false});
 
-            World::addComponent(
-                hero,
-                Keys{
-                    SDL_SCANCODE_W,
-                    SDL_SCANCODE_S,
-                    SDL_SCANCODE_D,
-                    SDL_SCANCODE_A,
-                    SDL_SCANCODE_F
-                }
-            );
+            World::addComponent(hero,Keys{SDL_SCANCODE_W,SDL_SCANCODE_S,SDL_SCANCODE_D,SDL_SCANCODE_A,SDL_SCANCODE_F});
 
-            /*
-            // Optional teammate
-            CreateHero(
-                world,
-                s.hero2.x,
-                s.hero2.y,
-                characterstex
-            );
-            */
         }
 
         // Enemy 1
-        CreateEnemy(
-            world,
-            s.enemy1.x,
-            s.enemy1.y,
-            55,
-            70,
-            4,
-            enemiestex
-        );
+        CreateEnemy(world,s.enemy1.x,s.enemy1.y,55,70,4,enemiestex);
 
         // Enemy 2
-        CreateEnemy(
-            world,
-            s.enemy2.x,
-            s.enemy2.y,
-            55,
-            70,
-            4,
-            enemiestex
-        );
+        CreateEnemy(world,s.enemy2.x,s.enemy2.y,55,70,4,enemiestex);
     }
 
     void GoldenAxe::run() {
@@ -1019,8 +979,14 @@ namespace goldenaxe {
             ai_system();
             combat_system(dt);
 
-            if (battleOver() &&!battleFinished) {
+            if (battleOverStagePassed() &&!battleFinished) {
                 battleFinished = true;
+                forwardtransition = true;
+                startStageTransition();
+            }
+            else if (battleOverStageFailed() &&!battleFinished) {
+                battleFinished=true;
+                forwardtransition=false;
                 startStageTransition();
             }
 
