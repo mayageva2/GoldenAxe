@@ -31,11 +31,12 @@ namespace goldenaxe {
             return;
         }
 
-        characterstex = IMG_LoadTexture(ren, CHARACTERS_FILE);//
+        characterstex = IMG_LoadTexture(ren, CHARACTERS_FILE);
         enemiestex = IMG_LoadTexture(ren, ENEMIES_FILE);
         flasktex = IMG_LoadTexture(ren, FLASK_FILE);
         santatex = IMG_LoadTexture(ren, SANTA_FILE);
         stagetex = IMG_LoadTexture(ren, STAGE_FILE);
+        fontstex = IMG_LoadTexture(ren, FONTS_FILE);
 
         if (!stagetex) cout << "Warning: Could not load textures. Check external folder!" << endl;
     }
@@ -254,6 +255,79 @@ namespace goldenaxe {
         return enemy;
     }
 
+    // Assumptions:
+    // - You already loaded the font texture into SDL_Texture* fontTexture
+    // - Each character in the sprite sheet is 8x8 pixels
+    // - Renderer width is GameConfig::WIDTH * cellSize (or similar)
+
+
+    const int CHAR_W = 17;
+    const int CHAR_H = 17;
+    const int SCALE = 2;
+
+    void drawChar(SDL_Renderer* renderer,
+                  SDL_Texture* fontTexture,
+                  char c,
+                  int x,
+                  int y)
+    {
+        int index = c - 32;
+
+        if (index < 0)
+            return;
+
+        const int COLS = 16;
+
+        SDL_FRect src;
+        src.x = (index % COLS) * CHAR_W;
+        src.y = (index / COLS) * CHAR_H;
+        src.w = CHAR_W;
+        src.h = CHAR_H;
+
+        SDL_FRect dst;
+        dst.x = (float)x;
+        dst.y = (float)y;
+        dst.w = CHAR_W * SCALE;
+        dst.h = CHAR_H * SCALE;
+
+        SDL_RenderTexture(renderer, fontTexture, &src, &dst);
+    }
+
+    void drawText(SDL_Renderer* renderer,
+              SDL_Texture* fontTexture,
+              const std::string& text,
+              int x,
+              int y)
+    {
+        for (size_t i = 0; i < text.size(); i++)
+        {
+            drawChar(renderer,
+                     fontTexture,
+                     text[i],
+                     x + (int)i * CHAR_W * SCALE,
+                     y);
+        }
+    }
+
+    // Draw HUD centered at top
+    void drawHUD(SDL_Renderer* renderer,
+                 SDL_Texture* fontTexture,
+                 int score,
+                 int lives,
+                 int screenWidth)
+    {
+        std::string text =
+            "SCORE: " + std::to_string(score) +
+            "   LIVES: " + std::to_string(lives);
+
+        int textWidth = (int)text.size() * CHAR_W;
+
+        int x = (screenWidth - textWidth) / 2;
+        int y = 5;
+
+        drawText(renderer, fontTexture, text, x, y);
+    }
+
     constexpr Drawable GoldenAxe::makeDrawable(SDL_FRect part, SDL_Texture* texture) {
         return Drawable{{part}, {part.w*TEX_SCALE, part.h*TEX_SCALE},texture};
     }
@@ -310,6 +384,12 @@ namespace goldenaxe {
                 if ((!lookLeftInSheet && mov.vx < -0.1f) || (lookLeftInSheet && mov.vx > 0.1f)) {
                     flip = SDL_FLIP_HORIZONTAL;
                     dest.x += fOffset * TEX_SCALE;
+                }
+                if (e.has<Score>()) //Player
+                {
+                    auto& score = e.get<Score>();
+                    auto& lives = e.get<ChangeLives>();
+                    drawHUD(ren,fontstex,score.points,lives.lives,WIN_W);
                 }
 
                 SDL_RenderTextureRotated(ren, d.texture, &d.part, &dest, 0, nullptr, flip);
@@ -762,6 +842,7 @@ namespace goldenaxe {
             return;
         static const Mask attackerMask = MaskBuilder().set<Intent>().set<Position>().set<Animation>().build();
         static const Mask victimMask = MaskBuilder().set<ChangeLives>().set<Position>().build();
+        static const Mask scoreMask = MaskBuilder().set<Score>().build();
 
         for (Entity attacker = Entity::first(); !attacker.eof(); attacker.next()) {
             if (!attacker.test(attackerMask)) continue;
@@ -777,11 +858,24 @@ namespace goldenaxe {
                     const auto& vPos = victim.get<Position>();
                     if (abs(aPos.x - vPos.x) < 70.0f && abs(aPos.y - vPos.y) < 20.0f) {
                         auto& vLife = victim.get<ChangeLives>();
-                        if (vLife.invulnTimer <= 0) {
+
+
+                        if (vLife.invulnTimer <= 0) { //if confirms attack is fully performed
+
+                            //Perfom the hit on the victim
                             vLife.lives -= 1;
                             vLife.invulnTimer = 0.8f;
-                            if (victim.has<Animation>()) victim.get<Animation>().hitTimer = 0.5f;
+                            if (victim.has<Animation>())
+                                victim.get<Animation>().hitTimer = 0.5f;
+
+                            //Add Score to player (if he is the attacker)
+                            if (attacker.has<Score>()) {
+                                auto& score = attacker.get<Score>();
+                                score.points++;
+                            }
                         }
+
+
                     }
                 }
             }

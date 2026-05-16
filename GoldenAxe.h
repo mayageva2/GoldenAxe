@@ -335,6 +335,7 @@ namespace goldenaxe {
         SDL_Texture* flasktex = nullptr;
         SDL_Texture* santatex = nullptr;
         SDL_Texture* stagetex = nullptr;
+        SDL_Texture* fontstex = nullptr;
 
         b2WorldId world = b2_nullWorldId;
         int totalKills = 0;
